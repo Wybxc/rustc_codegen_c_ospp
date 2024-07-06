@@ -35,10 +35,13 @@ use rustc_session::config::{OptLevel, OutputFilenames};
 use rustc_session::Session;
 use rustc_span::ErrorGuaranteed;
 
+use crate::module::Module;
+
 mod archive;
 mod base;
 mod util;
 mod write;
+mod module;
 
 rustc_fluent_macro::fluent_messages! { "../messages.ftl" }
 
@@ -87,6 +90,10 @@ impl CodegenBackend for CCodegen {
         outputs: &OutputFilenames,
     ) -> Result<(), ErrorGuaranteed> {
         link_binary(sess, &crate::archive::ArArchiveBuilderBuilder, &codegen_results, outputs)
+    }
+
+    fn supports_parallel(&self) -> bool {
+        false // Maybe true?
     }
 }
 
@@ -140,7 +147,7 @@ impl ThinBufferMethods for ThinBuffer {
 }
 
 impl WriteBackendMethods for CCodegen {
-    type Module = ();
+    type Module = Module;
     type TargetMachine = ();
     type TargetMachineError = ();
     type ModuleBuffer = ModuleBuffer;

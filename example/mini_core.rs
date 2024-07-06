@@ -5,3 +5,6 @@
 
 #[lang = "sized"]
 pub trait Sized {}
+
+#[no_mangle]
+pub fn main() {}
