@@ -8,6 +8,9 @@ crate-type = ["dylib"]
 
 [dependencies]
 
+[dev-dependencies]
+which = "6.0.1"
+
 # This package uses rustc crates.
 [package.metadata.rust-analyzer]
 rustc_private = true
