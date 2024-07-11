@@ -24,10 +24,12 @@ pub fn filecheck() {
         let output = Command::new(&make).arg(format!("build/{case}")).output().unwrap();
         assert!(output.status.success(), "failed to build {case}");
 
-        let generated = std::fs::read_dir("build")
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .find(|entry| entry.file_name().to_string_lossy().starts_with(case));
+        let generated =
+            std::fs::read_dir("build").unwrap().filter_map(|entry| entry.ok()).find(|entry| {
+                let filename = entry.file_name();
+                let filename = filename.to_string_lossy();
+                filename.ends_with(".c") && filename.starts_with(case)
+            });
         assert!(generated.is_some(), "could not find {case}'s generated file");
 
         let generated = generated.unwrap();

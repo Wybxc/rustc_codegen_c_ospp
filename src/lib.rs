@@ -1,15 +1,20 @@
 #![feature(rustc_private)]
 
+extern crate rustc_abi;
 extern crate rustc_ast;
 extern crate rustc_codegen_ssa;
+extern crate rustc_const_eval;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_fluent_macro;
+extern crate rustc_hash;
+extern crate rustc_hir;
 extern crate rustc_metadata;
 extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
+extern crate rustc_target;
 extern crate tracing;
 
 use std::sync::Arc;
@@ -40,6 +45,8 @@ use crate::module::Module;
 
 mod archive;
 mod base;
+mod builder;
+mod context;
 mod module;
 mod util;
 mod write;
@@ -241,3 +248,5 @@ impl WriteBackendMethods for CCodegen {
 pub fn __rustc_codegen_backend() -> Box<dyn CodegenBackend> {
     Box::new(CCodegen {})
 }
+
+fn todo() {}
