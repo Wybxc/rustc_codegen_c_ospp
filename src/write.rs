@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::process::Stdio;
 
 use rustc_codegen_ssa::back::command::Command;
@@ -27,7 +28,9 @@ pub(crate) unsafe fn codegen(
     let c_out = obj_out.with_extension("c");
 
     // output c source code
-    fs::write(&c_out, format!("{}", module.module_llvm)).map_err(|_| FatalError)?;
+    let c_out_file = fs::File::create(&c_out).map_err(|_| FatalError)?;
+    writeln!(&c_out_file, "// file: {}.c", module.name).map_err(|_| FatalError)?;
+    write!(&c_out_file, "{}", module.module_llvm).map_err(|_| FatalError)?;
 
     // invoke cc to compile
     // TODO: configure cc

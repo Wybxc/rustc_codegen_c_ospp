@@ -7,9 +7,11 @@ use crate::module::{CDecl, CExpr, CStmt, CType, Module};
 // it seems this function will be invoked parallelly (if parallel codegen is enabled)
 
 pub fn compile_codegen_unit(
-    _tcx: TyCtxt<'_>,
+    tcx: TyCtxt<'_>,
     cgu_name: rustc_span::Symbol,
 ) -> (ModuleCodegen<Module>, u64) {
+    let _cgu = tcx.codegen_unit(cgu_name);
+
     let cost = 1;
     let name = cgu_name.as_str().to_owned();
 
