@@ -5,4 +5,11 @@
 extern crate mini_core;
 
 #[no_mangle]
-pub fn main() {}
+pub fn main() -> i32 {
+    0
+}
+
+#[no_mangle]
+pub fn foo(x: i32) -> i32 {
+    x
+}

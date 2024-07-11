@@ -13,7 +13,7 @@ use rustc_middle::ty::{ParamEnv, Ty, TyCtxt};
 use rustc_target::abi::call::FnAbi;
 use rustc_target::spec::{HasTargetSpec, Target};
 
-use crate::module::{CDecl, CExpr, CStmt, CType, Module};
+use crate::module::{CDecl, CParamVar, CStmt, CType, Module};
 
 mod asm;
 mod base_type;
@@ -27,25 +27,42 @@ mod type_membership;
 
 pub struct CodegenCx<'tcx> {
     pub tcx: TyCtxt<'tcx>,
-    pub functions: RefCell<FxHashMap<String, ()>>,
+    pub function_abis: RefCell<FxHashMap<String, (Vec<CType>, CType)>>,
+    pub functions: RefCell<FxHashMap<String, String>>,
 }
 
 impl<'tcx> CodegenCx<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
-        Self { tcx, functions: RefCell::new(FxHashMap::default()) }
+        Self {
+            tcx,
+            function_abis: RefCell::new(FxHashMap::default()),
+            functions: RefCell::new(FxHashMap::default()),
+        }
     }
 
     pub fn finish(self) -> Module {
         let mut decls = vec![];
 
-        for (name, _) in self.functions.into_inner() {
+        let function_abis = self.function_abis.borrow();
+        for (name, (args, ret)) in function_abis.iter() {
+            decls.push(CDecl::Function {
+                name: name.to_string(),
+                ty: ret.clone(),
+                params: args.iter().cloned().map(|ty| CParamVar { ty, name: None }).collect(),
+                body: None,
+            });
+        }
+
+        for (name, instance) in self.functions.into_inner() {
+            let (args, ret) = &function_abis[&name];
             decls.push(CDecl::Function {
                 name,
-                ty: CType::Builtin("int".to_owned()),
-                params: vec![],
-                body: CStmt::Compound(vec![CStmt::Return(Some(Box::new(CExpr::Literal(
-                    "0".to_owned(),
-                ))))]),
+                ty: ret.clone(),
+                params: args.iter().cloned().map(|ty| CParamVar { ty, name: None }).collect(),
+                body: Some(CStmt::Compound(vec![CStmt::Decl(Box::new(CDecl::Raw(format!(
+                    "// {}",
+                    instance
+                ))))])),
             });
         }
 

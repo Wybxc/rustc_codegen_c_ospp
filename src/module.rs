@@ -32,8 +32,9 @@ pub enum CDecl {
     Record { name: String, fields: Vec<CDecl> },
     Field { name: String, ty: CType },
     Enum { name: String, values: Vec<CEnumConstant> },
-    Function { name: String, ty: CType, params: Vec<CParamVar>, body: CStmt },
+    Function { name: String, ty: CType, params: Vec<CParamVar>, body: Option<CStmt> },
     Var { name: String, ty: CType, init: Option<CStmt> },
+    Raw(String),
 }
 
 impl Display for CDecl {
@@ -66,7 +67,12 @@ impl Display for CDecl {
                     }
                     write!(f, "{}", param)?;
                 }
-                writeln!(f, ") {}", body)
+                write!(f, ")")?;
+                if let Some(body) = body {
+                    write!(f, "{}", body)
+                } else {
+                    write!(f, ";")
+                }
             }
             CDecl::Var { name, ty, init } => {
                 write!(f, "{} {}", ty, name)?;
@@ -75,10 +81,12 @@ impl Display for CDecl {
                 }
                 write!(f, ";")
             }
+            CDecl::Raw(s) => write!(f, "{}", s),
         }
     }
 }
 
+#[derive(Clone)]
 pub enum CType {
     Builtin(String),
     Pointer(Box<CType>),
@@ -113,13 +121,17 @@ impl Display for CEnumConstant {
 }
 
 pub struct CParamVar {
-    pub name: String,
+    pub name: Option<String>,
     pub ty: CType,
 }
 
 impl Display for CParamVar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.ty, self.name)
+        if let Some(name) = &self.name {
+            write!(f, "{} {}", self.ty, name)
+        } else {
+            write!(f, "{}", self.ty)
+        }
     }
 }
 

@@ -7,7 +7,7 @@ use crate::builder::Builder;
 
 impl<'tcx> AbiBuilderMethods<'tcx> for Builder<'_, 'tcx> {
     fn get_param(&mut self, index: usize) -> Self::Value {
-        todo!()
+        crate::todo()
     }
 }
 
