@@ -10,4 +10,4 @@ crate-type = ["dylib"]
 
 # This package uses rustc crates.
 [package.metadata.rust-analyzer]
-rustc_private=true
+rustc_private = true

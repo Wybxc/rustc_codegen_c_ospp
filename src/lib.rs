@@ -10,6 +10,7 @@ extern crate rustc_metadata;
 extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
+extern crate tracing;
 
 use std::sync::Arc;
 
@@ -39,9 +40,9 @@ use crate::module::Module;
 
 mod archive;
 mod base;
+mod module;
 mod util;
 mod write;
-mod module;
 
 rustc_fluent_macro::fluent_messages! { "../messages.ftl" }
 

@@ -14,20 +14,14 @@ pub fn compile_codegen_unit(
     let name = cgu_name.as_str().to_owned();
 
     let module = Module {
-        includes: vec!["stdio.h".to_owned()],
+        includes: vec![],
         decls: vec![CDecl::Function {
             name: "main".to_owned(),
             ty: CType::Builtin("int".to_owned()),
             params: vec![],
-            body: CStmt::Compound(vec![
-                CStmt::Expr(CExpr::Call {
-                    callee: Box::new(CExpr::DeclRef { name: "printf".to_owned() }),
-                    args: vec![CExpr::Literal(
-                        "\"Hello, World!\\n\"".to_string(),
-                    )],
-                }),
-                CStmt::Return(Some(Box::new(CExpr::Literal("0".to_string())))),
-            ]),
+            body: CStmt::Compound(vec![CStmt::Return(Some(Box::new(CExpr::Literal(
+                "0".to_string(),
+            ))))]),
         }],
     };
 

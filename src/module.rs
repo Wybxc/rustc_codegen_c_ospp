@@ -32,7 +32,7 @@ pub enum CDecl {
     Record { name: String, fields: Vec<CDecl> },
     Field { name: String, ty: CType },
     Enum { name: String, values: Vec<CEnumConstant> },
-    Function { name: String, ty: CType, params: Vec<CParamVar>, body: CStmt },    
+    Function { name: String, ty: CType, params: Vec<CParamVar>, body: CStmt },
     Var { name: String, ty: CType, init: Option<CStmt> },
 }
 
