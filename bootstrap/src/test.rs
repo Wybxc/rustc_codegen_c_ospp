@@ -43,7 +43,7 @@ impl TestCommand {
         // Codegen tests
         for case in glob("tests/codegen/*.rs").unwrap() {
             let case = case.unwrap();
-            let filename = case.file_name().unwrap();
+            let filename = case.file_stem().unwrap();
             let name = format!("codegen/{}", filename.to_string_lossy());
             let output = manifest.out_dir.join("tests/codegen").join(Path::new(filename));
             result.push(TestCase { name, source: case, output, test: TestType::FileCheck })
