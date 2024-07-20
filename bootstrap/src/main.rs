@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use crate::manifest::Manifest;
 
 mod clean;
+mod fmt;
 mod manifest;
 mod rustc;
 mod test;
@@ -28,6 +29,7 @@ pub enum Command {
     Test(test::TestCommand),
     Clean(clean::CleanCommand),
     Rustc(rustc::RustcCommand),
+    Fmt(fmt::FmtCommand),
 }
 
 fn main() {
@@ -41,5 +43,6 @@ fn main() {
         Command::Test(test) => test.run(&manifest),
         Command::Clean(clean) => clean.run(&manifest),
         Command::Rustc(rustc) => rustc.run(&manifest),
+        Command::Fmt(fmt) => fmt.run(&manifest),
     }
 }
