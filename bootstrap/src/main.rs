@@ -2,9 +2,10 @@ use clap::{Parser, Subcommand};
 
 use crate::manifest::Manifest;
 
-mod manifest;
-mod test;
 mod clean;
+mod manifest;
+mod rustc;
+mod test;
 
 /// Bootstrap system for the rustc codegen c
 #[derive(Parser, Debug)]
@@ -26,6 +27,7 @@ pub struct Cli {
 pub enum Command {
     Test(test::TestCommand),
     Clean(clean::CleanCommand),
+    Rustc(rustc::RustcCommand),
 }
 
 fn main() {
@@ -36,11 +38,8 @@ fn main() {
         out_dir: cli.out_dir.unwrap_or("build".to_string()).into(),
     };
     match cli.command {
-        Command::Test(test) => {
-            test.run(&manifest);
-        }
-        Command::Clean(clean) => {
-            clean.run(&manifest);
-        }
+        Command::Test(test) => test.run(&manifest),
+        Command::Clean(clean) => clean.run(&manifest),
+        Command::Rustc(rustc) => rustc.run(&manifest),
     }
 }
