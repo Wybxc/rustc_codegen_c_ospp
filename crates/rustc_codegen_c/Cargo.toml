@@ -1,15 +1,12 @@
 [package]
 name = "rustc_codegen_c"
-version = "0.1.0"
 edition = "2021"
+version.workspace = true
 
 [lib]
 crate-type = ["dylib"]
 
 [dependencies]
-
-[dev-dependencies]
-which = "6.0.1"
 
 # This package uses rustc crates.
 [package.metadata.rust-analyzer]

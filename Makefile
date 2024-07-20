@@ -1,21 +1,24 @@
 default: build/example
 
-RUSTC_OPTIONS = -Z codegen-backend=target/debug/librustc_codegen_c.so --out-dir build -Lall=build \
-	-C panic=abort
+RUSTC_OPTIONS = -Z codegen-backend=crates/target/debug/librustc_codegen_c.so -C panic=abort \
+	-Lall=build 
 
-build/example: backend example/example.rs build/mini_core.lib 
-	rustc example/example.rs --crate-type bin $(RUSTC_OPTIONS)
+build/example: example/example.rs backend build/mini_core.lib 
+	rustc example/example.rs --crate-type bin $(RUSTC_OPTIONS) --out-dir build 
 
-build/%: backend build/mini_core.lib example/tests/%.rs
-	rustc example/tests/$*.rs --crate-type bin $(RUSTC_OPTIONS)
+TESTCASES = $(wildcard tests/**/*.rs)
+TESTCASE_OUTPUT = $(patsubst tests/%.rs, build/tests/%, $(TESTCASES))
 
-build/mini_core.lib: backend example/mini_core.rs 
-	rustc example/mini_core.rs --crate-type lib $(RUSTC_OPTIONS)
+build/tests/%: tests/%.rs backend build/mini_core.lib
+	rustc tests/$*.rs --crate-type bin $(RUSTC_OPTIONS) -o build/tests/$*
+
+build/mini_core.lib: example/mini_core.rs backend
+	rustc example/mini_core.rs --crate-type lib $(RUSTC_OPTIONS) --out-dir build
 
 .PHONY: clean backend
 
 backend:
-	cargo build
+	cd crates && cargo build
 
 clean:
 	rm -f rustc-ice-*
