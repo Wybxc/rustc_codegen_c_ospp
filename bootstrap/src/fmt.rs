@@ -16,7 +16,10 @@ impl FmtCommand {
             Command::new("cargo").arg("fmt").args(["--manifest-path", "bootstrap/Cargo.toml"]),
         );
         self.perform(
-            Command::new("cargo").arg("fmt").args(["--manifest-path", "crates/Cargo.toml"]),
+            Command::new("cargo")
+                .arg("fmt")
+                .args(["--manifest-path", "crates/Cargo.toml"])
+                .arg("--all"),
         );
         for file in glob("example/**/*.rs").unwrap() {
             self.perform(Command::new("rustfmt").arg(file.unwrap()));
