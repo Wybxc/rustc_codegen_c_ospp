@@ -18,7 +18,8 @@ impl<'tcx, 'mx> IntrinsicCallMethods<'tcx> for Builder<'_, 'tcx, 'mx> {
     }
 
     fn abort(&mut self) {
-        todo!()
+        let mcx = self.cx.mcx;
+        self.bb.push_stmt(mcx.expr_stmt(mcx.call(mcx.raw("abort"), vec![])));
     }
 
     fn assume(&mut self, val: Self::Value) {

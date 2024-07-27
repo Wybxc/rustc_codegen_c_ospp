@@ -45,6 +45,7 @@ impl Manifest {
             .arg("-Z")
             .arg(format!("codegen-backend={}", self.codegen_backend().display()))
             .args(["-C", "panic=abort"])
+            .args(["-C", "lto=false"])
             .arg(format!("-Lall={}", self.out_dir.display()));
         command
     }

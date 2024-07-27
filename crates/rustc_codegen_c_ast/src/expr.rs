@@ -4,8 +4,9 @@ use crate::ModuleCtxt;
 
 /// Values of C variable, parameters and scalars
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum CValue {
-    Scalar(i128),
+pub enum CValue<'mx> {
+    Null,
+    Scalar(&'mx i128),
     Local(usize),
 }
 
@@ -14,7 +15,7 @@ pub type CExpr<'mx> = &'mx CExprKind<'mx>;
 #[derive(Debug, Clone)]
 pub enum CExprKind<'mx> {
     Raw(&'static str),
-    Value(CValue),
+    Value(CValue<'mx>),
     Binary { lhs: CExpr<'mx>, rhs: CExpr<'mx>, op: &'static str },
     Cast { ty: CTy<'mx>, expr: CExpr<'mx> },
     Call { callee: CExpr<'mx>, args: Vec<CExpr<'mx>> },
@@ -30,12 +31,20 @@ impl<'mx> ModuleCtxt<'mx> {
         self.expr(CExprKind::Raw(raw))
     }
 
-    pub fn value(&self, value: CValue) -> CExpr<'mx> {
+    pub fn scalar(&self, scalar: i128) -> CValue<'mx> {
+        CValue::Scalar(self.arena().alloc(scalar))
+    }
+
+    pub fn value(&self, value: CValue<'mx>) -> CExpr<'mx> {
         self.expr(CExprKind::Value(value))
     }
 
     pub fn binary(&self, lhs: CExpr<'mx>, rhs: CExpr<'mx>, op: &'static str) -> CExpr<'mx> {
         self.expr(CExprKind::Binary { lhs, rhs, op })
+    }
+
+    pub fn assign(&self, lhs: CExpr<'mx>, rhs: CExpr<'mx>) -> CExpr<'mx> {
+        self.binary(lhs, rhs, "=")
     }
 
     pub fn cast(&self, ty: CTy<'mx>, expr: CExpr<'mx>) -> CExpr<'mx> {
@@ -54,6 +63,7 @@ impl<'mx> ModuleCtxt<'mx> {
 impl Printer {
     pub fn print_value(&mut self, value: CValue) {
         match value {
+            CValue::Null => self.word("NULL"),
             CValue::Scalar(i) => self.word(i.to_string()),
             CValue::Local(i) => self.word(format!("_{}", i)),
         }

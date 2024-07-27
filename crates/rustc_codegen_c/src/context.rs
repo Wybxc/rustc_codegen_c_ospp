@@ -35,13 +35,13 @@ pub struct CodegenCx<'tcx, 'mx> {
 
 impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
     pub fn new(tcx: TyCtxt<'tcx>, mcx: ModuleCtxt<'mx>) -> Self {
-        mcx.module().push_include("stdint.h");
+        mcx.module().push_includes(&["stdlib.h", "stdint.h"]);
         Self { tcx, mcx, function_instances: RefCell::new(FxHashMap::default()) }
     }
 }
 
 impl<'tcx, 'mx> BackendTypes for CodegenCx<'tcx, 'mx> {
-    type Value = CValue;
+    type Value = (CValue<'mx>, CTy<'mx>);
     type Function = CFunc<'mx>;
     type BasicBlock = CFunc<'mx>;
     type Type = CTy<'mx>;

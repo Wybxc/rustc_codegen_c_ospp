@@ -14,7 +14,7 @@ pub type CFunc<'mx> = Interned<'mx, CFuncKind<'mx>>;
 pub struct CFuncKind<'mx> {
     pub name: &'mx str,
     pub ty: CTy<'mx>,
-    pub params: Vec<(CTy<'mx>, CValue)>,
+    pub params: Vec<(CTy<'mx>, CValue<'mx>)>,
     pub body: RefCell<Vec<CStmt<'mx>>>,
     local_var_counter: Cell<usize>,
 }

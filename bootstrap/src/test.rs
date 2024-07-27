@@ -70,6 +70,7 @@ impl TestCase {
         manifest
             .rustc()
             .args(["--crate-type", "bin"])
+            .arg("-O")
             .arg(&self.source)
             .arg("-o")
             .arg(&self.output)

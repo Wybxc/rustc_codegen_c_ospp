@@ -5,7 +5,7 @@ use std::ops::Deref;
 use rustc_abi::{HasDataLayout, TargetDataLayout};
 use rustc_codegen_c_ast::func::CFunc;
 use rustc_codegen_c_ast::r#type::CTy;
-use rustc_codegen_ssa::traits::{BackendTypes, BuilderMethods, HasCodegen};
+use rustc_codegen_ssa::traits::{BackendTypes, BuilderMethods, HasCodegen, IntrinsicCallMethods};
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasParamEnv, HasTyCtxt, LayoutError, LayoutOfHelpers,
     TyAndLayout,
@@ -131,7 +131,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn ret(&mut self, v: Self::Value) {
-        self.bb.0.push_stmt(self.cx.mcx.ret(Some(self.cx.mcx.value(v))))
+        self.bb.0.push_stmt(self.cx.mcx.ret(Some(self.cx.mcx.value(v.0))))
     }
 
     fn br(&mut self, dest: Self::BasicBlock) {
@@ -172,11 +172,23 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn unreachable(&mut self) {
-        todo!()
+        self.abort();
     }
 
     fn add(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        todo!()
+        assert!(lhs.1 == rhs.1, "cannot add different types");
+
+        let mcx = self.cx.mcx;
+        let ty = lhs.1;
+        let ret = self.bb.0.next_local_var();
+
+        self.bb.0.push_stmt(mcx.decl_stmt(mcx.var(
+            ret,
+            ty,
+            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), "+")),
+        )));
+
+        (ret, ty)
     }
 
     fn fadd(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -511,7 +523,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         let ret = self.bb.0.next_local_var();
 
         let dest = if let CTy::Primitive(ty) = dest_ty { ty } else { unreachable!() };
-        let mut cast = mcx.cast(CTy::Primitive(dest), mcx.value(val));
+        let mut cast = mcx.cast(CTy::Primitive(dest), mcx.value(val.0));
         if dest.is_signed() {
             cast = mcx.call(
                 mcx.raw("__rust_utos"),
@@ -524,7 +536,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
             );
         }
         self.bb.0.push_stmt(mcx.decl_stmt(mcx.var(ret, dest_ty, Some(cast))));
-        ret
+        (ret, dest_ty)
     }
 
     fn pointercast(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {

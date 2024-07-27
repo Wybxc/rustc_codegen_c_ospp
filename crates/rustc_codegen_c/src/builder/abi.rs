@@ -9,7 +9,8 @@ use crate::builder::Builder;
 impl<'tcx, 'mx> AbiBuilderMethods<'tcx> for Builder<'_, 'tcx, 'mx> {
     fn get_param(&mut self, index: usize) -> Self::Value {
         // Params are first n variables in the function
-        CValue::Local(index)
+        let ty = self.bb.0.params[index].0;
+        (CValue::Local(index), ty)
     }
 }
 

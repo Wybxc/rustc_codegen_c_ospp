@@ -11,7 +11,7 @@ pub enum CDeclKind<'mx> {
     // Record { name: String, fields: Vec<CDecl> },
     // Field { name: String, ty: CType },
     // Enum { name: String, values: Vec<CEnumConstant> },
-    Var { name: CValue, ty: CTy<'mx>, init: Option<CExpr<'mx>> },
+    Var { name: CValue<'mx>, ty: CTy<'mx>, init: Option<CExpr<'mx>> },
 }
 
 impl<'mx> ModuleCtxt<'mx> {
@@ -19,7 +19,7 @@ impl<'mx> ModuleCtxt<'mx> {
         self.arena().alloc(decl)
     }
 
-    pub fn var(self, name: CValue, ty: CTy<'mx>, init: Option<CExpr<'mx>>) -> CDecl<'mx> {
+    pub fn var(self, name: CValue<'mx>, ty: CTy<'mx>, init: Option<CExpr<'mx>>) -> CDecl<'mx> {
         self.decl(CDeclKind::Var { name, ty, init })
     }
 }

@@ -1,30 +1,31 @@
 use rustc_codegen_ssa::traits::BaseTypeMethods;
+use rustc_type_ir::IntTy;
 
 use crate::context::CodegenCx;
 
 impl<'tcx, 'mx> BaseTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     fn type_i8(&self) -> Self::Type {
-        todo!()
+        self.mcx.get_int_type(IntTy::I8)
     }
 
     fn type_i16(&self) -> Self::Type {
-        todo!()
+        self.mcx.get_int_type(IntTy::I16)
     }
 
     fn type_i32(&self) -> Self::Type {
-        todo!()
+        self.mcx.get_int_type(IntTy::I32)
     }
 
     fn type_i64(&self) -> Self::Type {
-        todo!()
+        self.mcx.get_int_type(IntTy::I64)
     }
 
     fn type_i128(&self) -> Self::Type {
-        todo!()
+        self.mcx.get_int_type(IntTy::I128)
     }
 
     fn type_isize(&self) -> Self::Type {
-        todo!()
+        self.mcx.get_int_type(IntTy::Isize)
     }
 
     fn type_f16(&self) -> Self::Type {
@@ -56,7 +57,7 @@ impl<'tcx, 'mx> BaseTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn type_ptr(&self) -> Self::Type {
-        todo!()
+        self.mcx.get_ptr_type(self.mcx.get_void_type())
     }
 
     fn type_ptr_ext(&self, address_space: rustc_abi::AddressSpace) -> Self::Type {

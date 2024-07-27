@@ -2,15 +2,19 @@
 
 use std::fmt::{self, Display};
 
+use crate::r#type::{CTy, CTyKind};
+
 extern crate rustc_arena;
 extern crate rustc_ast_pretty;
 extern crate rustc_data_structures;
+extern crate rustc_hash;
 extern crate rustc_type_ir;
 
 pub mod arena;
 pub mod decl;
 pub mod expr;
 pub mod func;
+mod intern;
 pub mod module;
 pub mod pretty;
 pub mod stmt;
@@ -31,6 +35,10 @@ impl<'mx> ModuleCtxt<'mx> {
     pub fn alloc_str(&self, s: &str) -> &'mx str {
         self.arena().alloc_str(s)
     }
+
+    pub fn intern_ty(&self, ty: CTyKind<'mx>) -> CTy<'mx> {
+        self.0.interner.intern_ty(self.arena(), ty)
+    }
 }
 
 impl<'mx> Display for ModuleCtxt<'mx> {
@@ -44,10 +52,15 @@ impl<'mx> Display for ModuleCtxt<'mx> {
 pub struct ModuleArena<'mx> {
     pub arena: arena::Arena<'mx>,
     pub module: module::Module<'mx>,
+    interner: intern::Interner<'mx>,
 }
 
 impl<'mx> ModuleArena<'mx> {
     pub fn new(helper: &'static str) -> Self {
-        Self { arena: arena::Arena::default(), module: module::Module::new(helper) }
+        Self {
+            arena: arena::Arena::default(),
+            module: module::Module::new(helper),
+            interner: intern::Interner::default(),
+        }
     }
 }

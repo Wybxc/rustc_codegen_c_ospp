@@ -22,8 +22,8 @@ impl<'mx> Module<'mx> {
         }
     }
 
-    pub fn push_include(&self, include: &'static str) {
-        self.includes.borrow_mut().push(include);
+    pub fn push_includes(&self, includes: &[&'static str]) {
+        self.includes.borrow_mut().extend(includes);
     }
 
     pub fn push_decl(&self, decl: CDecl<'mx>) {

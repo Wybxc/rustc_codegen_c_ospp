@@ -1,4 +1,5 @@
 use rustc_abi::Abi;
+use rustc_codegen_c_ast::r#type::CTy;
 use rustc_codegen_ssa::traits::LayoutTypeMethods;
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::Ty;
@@ -7,9 +8,44 @@ use rustc_type_ir::TyKind;
 
 use crate::context::CodegenCx;
 
+impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
+    fn get_cty(&self, ty: Ty<'tcx>) -> CTy<'mx> {
+        match ty.kind() {
+            TyKind::Bool => todo!(),
+            TyKind::Char => todo!(),
+            TyKind::Int(int) => self.mcx.get_int_type(*int),
+            TyKind::Uint(uint) => self.mcx.get_uint_type(*uint),
+            TyKind::Float(_) => todo!(),
+            TyKind::Adt(_, _) => self.mcx.get_void_type(), // TODO: struct
+            TyKind::Foreign(_) => todo!(),
+            TyKind::Str => self.mcx.get_char_type(),
+            TyKind::Array(_, _) => todo!(),
+            TyKind::Pat(_, _) => todo!(),
+            TyKind::Slice(_) => todo!(),
+            TyKind::RawPtr(_, _) => todo!(),
+            TyKind::Ref(_, ty, _) => self.mcx.get_ptr_type(self.get_cty(*ty)),
+            TyKind::FnDef(_, _) => todo!(),
+            TyKind::FnPtr(_) => todo!(),
+            TyKind::Dynamic(_, _, _) => todo!(),
+            TyKind::Closure(_, _) => todo!(),
+            TyKind::CoroutineClosure(_, _) => todo!(),
+            TyKind::Coroutine(_, _) => todo!(),
+            TyKind::CoroutineWitness(_, _) => todo!(),
+            TyKind::Never => self.mcx.get_void_type(),
+            TyKind::Tuple(_) => todo!(),
+            TyKind::Alias(_, _) => todo!(),
+            TyKind::Param(_) => todo!(),
+            TyKind::Bound(_, _) => todo!(),
+            TyKind::Placeholder(_) => todo!(),
+            TyKind::Infer(_) => todo!(),
+            TyKind::Error(_) => todo!(),
+        }
+    }
+}
+
 impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     fn backend_type(&self, layout: TyAndLayout<'tcx>) -> Self::Type {
-        todo!()
+        self.get_cty(layout.ty)
     }
 
     fn cast_backend_type(&self, ty: &rustc_target::abi::call::CastTarget) -> Self::Type {
@@ -29,11 +65,7 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn immediate_backend_type(&self, layout: TyAndLayout<'tcx>) -> Self::Type {
-        match layout.ty.kind() {
-            TyKind::Int(int) => self.mcx.get_int_type(*int),
-            TyKind::Uint(uint) => self.mcx.get_uint_type(*uint),
-            _ => todo!(),
-        }
+        self.get_cty(layout.ty)
     }
 
     fn is_backend_immediate(&self, layout: TyAndLayout<'tcx>) -> bool {
@@ -44,7 +76,11 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn is_backend_scalar_pair(&self, layout: TyAndLayout<'tcx>) -> bool {
-        todo!()
+        // match layout.abi {
+        //     Abi::ScalarPair(..) => true,
+        //     Abi::Uninhabited | Abi::Scalar(_) | Abi::Vector { .. } | Abi::Aggregate { .. } => false,
+        // }
+        false
     }
 
     fn scalar_pair_element_backend_type(

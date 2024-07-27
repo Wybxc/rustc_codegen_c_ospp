@@ -14,11 +14,15 @@ pub enum CTy<'mx> {
 /// C primitive types.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CPTy {
+    Void,
+    Char,
+
     Isize,
     I8,
     I16,
     I32,
     I64,
+
     Usize,
     U8,
     U16,
@@ -29,10 +33,7 @@ pub enum CPTy {
 impl CPTy {
     /// Whether the type is a signed integer.
     pub fn is_signed(self) -> bool {
-        match self {
-            CPTy::Isize | CPTy::I8 | CPTy::I16 | CPTy::I32 | CPTy::I64 => true,
-            CPTy::Usize | CPTy::U8 | CPTy::U16 | CPTy::U32 | CPTy::U64 => false,
-        }
+        matches!(self, CPTy::Isize | CPTy::I8 | CPTy::I16 | CPTy::I32 | CPTy::I64)
     }
 
     /// The unsigned version of this type.
@@ -53,11 +54,15 @@ impl CPTy {
 
     pub fn to_str(self) -> &'static str {
         match self {
+            CPTy::Void => "void",
+            CPTy::Char => "char",
+
             CPTy::Isize => "size_t",
             CPTy::I8 => "int8_t",
             CPTy::I16 => "int16_t",
             CPTy::I32 => "int32_t",
             CPTy::I64 => "int64_t",
+
             CPTy::Usize => "size_t",
             CPTy::U8 => "uint8_t",
             CPTy::U16 => "uint16_t",
@@ -67,6 +72,10 @@ impl CPTy {
     }
 
     /// The maximum value of this type. From `<stdint.h>`.
+    ///
+    /// ## Panic
+    ///
+    /// Panics if the type is not an integer.
     pub fn max_value(self) -> &'static str {
         match self {
             CPTy::Isize => "SIZE_MAX",
@@ -79,11 +88,12 @@ impl CPTy {
             CPTy::U16 => "UINT16_MAX",
             CPTy::U32 => "UINT32_MAX",
             CPTy::U64 => "UINT64_MAX",
+            _ => unreachable!(),
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CTyKind<'mx> {
     Pointer(CTy<'mx>),
     // Record(String),
@@ -91,6 +101,16 @@ pub enum CTyKind<'mx> {
 }
 
 impl<'mx> ModuleCtxt<'mx> {
+    /// Get the void type
+    pub const fn get_void_type(&self) -> CTy<'mx> {
+        CTy::Primitive(CPTy::Void)
+    }
+
+    /// Get the char type
+    pub const fn get_char_type(&self) -> CTy<'mx> {
+        CTy::Primitive(CPTy::Char)
+    }
+
     /// Get the type of an signed integer
     pub fn get_int_type(&self, int: IntTy) -> CTy<'mx> {
         match int {
@@ -114,6 +134,11 @@ impl<'mx> ModuleCtxt<'mx> {
             UintTy::U128 => unimplemented!("u128 not supported yet"),
         }
     }
+
+    /// Get the pointer type
+    pub fn get_ptr_type(&self, ty: CTy<'mx>) -> CTy<'mx> {
+        self.intern_ty(CTyKind::Pointer(ty))
+    }
 }
 
 impl Printer {
@@ -127,8 +152,8 @@ impl Printer {
     fn print_ty_kind(&mut self, ty: &CTyKind<'_>) {
         match ty {
             CTyKind::Pointer(ty) => {
-                self.word("*");
                 self.print_ty(*ty);
+                self.word("*");
             }
         }
     }
