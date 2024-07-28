@@ -56,12 +56,10 @@ impl Printer {
         padding: usize,
         op: impl FnOnce(&mut Self),
     ) {
-        self.ibox(indent, |this| {
-            this.word(delim.0);
-            this.pp.break_offset(padding, 0);
-            op(this);
-            this.word(delim.1);
-        });
+        self.word(delim.0);
+        self.pp.break_offset(padding, 0);
+        self.ibox(indent, op);
+        self.word(delim.1);
     }
 
     pub(crate) fn cbox(&mut self, indent: isize, op: impl FnOnce(&mut Self)) {
@@ -77,13 +75,13 @@ impl Printer {
         padding: usize,
         op: impl FnOnce(&mut Self),
     ) {
+        self.word(delim.0);
+        self.pp.break_offset(padding, indent);
         self.cbox(indent, |this| {
-            this.word(delim.0);
-            this.pp.break_offset(padding, 0);
             op(this);
             this.pp.break_offset(padding, -indent);
-            this.word(delim.1);
         });
+        self.word(delim.1);
     }
 
     pub(crate) fn valign(&mut self, op: impl FnOnce(&mut Self)) {

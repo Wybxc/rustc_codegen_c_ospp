@@ -57,7 +57,7 @@ impl Printer {
     pub fn print_func(&mut self, func: CFunc) {
         self.ibox(0, |this| {
             this.print_signature(func);
-            this.softbreak(); // I don't know how to avoid a newline here
+            this.softbreak();
             this.print_compound(&func.0.body.borrow());
         })
     }
