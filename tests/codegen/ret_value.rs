@@ -4,6 +4,7 @@
 
 extern crate mini_core;
 
+// CHECK-LABEL: main
 // CHECK: 42
 #[no_mangle]
 pub fn main() -> i32 {

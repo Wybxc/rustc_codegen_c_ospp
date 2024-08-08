@@ -67,15 +67,15 @@ pub struct TestCase {
 impl TestCase {
     pub fn build(&self, manifest: &Manifest) {
         std::fs::create_dir_all(self.output.parent().unwrap()).unwrap();
-        manifest
-            .rustc()
+        let mut command = manifest.rustc();
+        command
             .args(["--crate-type", "bin"])
             .arg("-O")
             .arg(&self.source)
             .arg("-o")
-            .arg(&self.output)
-            .status()
-            .unwrap();
+            .arg(&self.output);
+        log::debug!("running {:?}", command);
+        command.status().unwrap();
     }
 }
 
@@ -115,11 +115,10 @@ impl FileChecker {
         let generated = generated.unwrap();
 
         let generated = File::open(generated.path()).unwrap();
-        let output = std::process::Command::new(&self.filecheck)
-            .arg(source)
-            .stdin(generated)
-            .output()
-            .unwrap();
+        let mut command = std::process::Command::new(&self.filecheck);
+        command.arg(source).stdin(generated);
+        log::debug!("running {:?}", command);
+        let output = command.output().unwrap();
         assert!(output.status.success(), "failed to run FileCheck on {case}");
     }
 }

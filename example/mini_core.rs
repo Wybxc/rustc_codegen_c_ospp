@@ -1,4 +1,4 @@
-#![feature(no_core, lang_items, rustc_attrs, intrinsics, decl_macro)]
+#![feature(no_core, lang_items, rustc_attrs, intrinsics, decl_macro, freeze_impls, auto_traits)]
 #![no_core]
 #![allow(internal_features)]
 
@@ -31,6 +31,15 @@ unsafe impl<'a, T: ?Sized> Copy for &'a T {}
 unsafe impl<T: ?Sized> Copy for *const T {}
 unsafe impl<T: ?Sized> Copy for *mut T {}
 
+#[lang = "freeze"]
+unsafe auto trait Freeze {}
+
+unsafe impl<T: ?Sized> Freeze for PhantomData<T> {}
+unsafe impl<T: ?Sized> Freeze for *const T {}
+unsafe impl<T: ?Sized> Freeze for *mut T {}
+unsafe impl<T: ?Sized> Freeze for &T {}
+unsafe impl<T: ?Sized> Freeze for &mut T {}
+
 #[lang = "add"]
 pub trait Add<Rhs = Self> {
     type Output;
@@ -47,6 +56,9 @@ impl Add for i32 {
         self + other
     }
 }
+
+#[lang = "phantom_data"]
+pub struct PhantomData<T: ?Sized>;
 
 // #[lang = "panic"]
 // #[track_caller]

@@ -21,16 +21,18 @@ impl Manifest {
         if self.release {
             command.arg("--release");
         }
+        log::debug!("running {:?}", command);
         command.status().unwrap();
 
         cprintln!("<b>[BUILD]</b> mini_core");
-        self.rustc()
+        let mut command = self.rustc();
+        command
             .arg("example/mini_core.rs")
             .args(["--crate-type", "lib"])
             .arg("--out-dir")
-            .arg(&self.out_dir)
-            .status()
-            .unwrap();
+            .arg(&self.out_dir);
+        log::debug!("running {:?}", command);
+        command.status().unwrap();
     }
 
     /// The path to the rustc codegen c library

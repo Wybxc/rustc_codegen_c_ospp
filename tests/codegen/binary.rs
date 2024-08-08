@@ -4,6 +4,7 @@
 
 extern crate mini_core;
 
+// CHECK-LABEL: foo
 // CHECK: +
 // CHECK-NEXT: +
 #[no_mangle]

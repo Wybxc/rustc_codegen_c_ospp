@@ -33,6 +33,7 @@ impl FmtCommand {
         if self.check {
             command.arg("--check");
         }
+        log::debug!("running {:?}", command);
         command.status().unwrap();
     }
 }

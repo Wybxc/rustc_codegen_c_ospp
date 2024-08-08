@@ -22,7 +22,9 @@ impl RustcCommand {
             .arg(&self.source)
             .args(["--crate-type", "bin"])
             .arg("--out-dir")
-            .arg(&manifest.out_dir);
-        command.args(&self.slop).status().unwrap();
+            .arg(&manifest.out_dir)
+            .args(&self.slop);
+        log::debug!("running {:?}", command);
+        command.status().unwrap();
     }
 }
