@@ -16,19 +16,22 @@ pub type CExpr<'mx> = &'mx CExprKind<'mx>;
 pub enum CExprKind<'mx> {
     Raw(&'static str),
     Value(CValue<'mx>),
+    Unary { op: &'static str, expr: CExpr<'mx> },
     Binary { lhs: CExpr<'mx>, rhs: CExpr<'mx>, op: &'static str },
+    Index { expr: CExpr<'mx>, index: CExpr<'mx> },
     Cast { ty: CTy<'mx>, expr: CExpr<'mx> },
     Call { callee: CExpr<'mx>, args: Vec<CExpr<'mx>> },
     Member { expr: CExpr<'mx>, arrow: bool, field: &'mx str },
+    InitList { exprs: Vec<CExpr<'mx>> },
 }
 
 impl<'mx> ModuleCtxt<'mx> {
-    pub fn expr(&self, expr: CExprKind<'mx>) -> CExpr<'mx> {
+    fn create_expr(&self, expr: CExprKind<'mx>) -> CExpr<'mx> {
         self.arena().alloc(expr)
     }
 
     pub fn raw(&self, raw: &'static str) -> CExpr<'mx> {
-        self.expr(CExprKind::Raw(raw))
+        self.create_expr(CExprKind::Raw(raw))
     }
 
     pub fn scalar(&self, scalar: i128) -> CValue<'mx> {
@@ -36,11 +39,19 @@ impl<'mx> ModuleCtxt<'mx> {
     }
 
     pub fn value(&self, value: CValue<'mx>) -> CExpr<'mx> {
-        self.expr(CExprKind::Value(value))
+        self.create_expr(CExprKind::Value(value))
+    }
+
+    pub fn unary(&self, op: &'static str, expr: CExpr<'mx>) -> CExpr<'mx> {
+        self.create_expr(CExprKind::Unary { op, expr })
     }
 
     pub fn binary(&self, lhs: CExpr<'mx>, rhs: CExpr<'mx>, op: &'static str) -> CExpr<'mx> {
-        self.expr(CExprKind::Binary { lhs, rhs, op })
+        self.create_expr(CExprKind::Binary { lhs, rhs, op })
+    }
+
+    pub fn index(&self, expr: CExpr<'mx>, index: CExpr<'mx>) -> CExpr<'mx> {
+        self.create_expr(CExprKind::Index { expr, index })
     }
 
     pub fn assign(&self, lhs: CExpr<'mx>, rhs: CExpr<'mx>) -> CExpr<'mx> {
@@ -48,15 +59,19 @@ impl<'mx> ModuleCtxt<'mx> {
     }
 
     pub fn cast(&self, ty: CTy<'mx>, expr: CExpr<'mx>) -> CExpr<'mx> {
-        self.expr(CExprKind::Cast { ty, expr })
+        self.create_expr(CExprKind::Cast { ty, expr })
     }
 
     pub fn call(&self, callee: CExpr<'mx>, args: Vec<CExpr<'mx>>) -> CExpr<'mx> {
-        self.expr(CExprKind::Call { callee, args })
+        self.create_expr(CExprKind::Call { callee, args })
     }
 
     pub fn member(&self, expr: CExpr<'mx>, field: &'mx str) -> CExpr<'mx> {
-        self.expr(CExprKind::Member { expr, field, arrow: false })
+        self.create_expr(CExprKind::Member { expr, field, arrow: false })
+    }
+
+    pub fn init_list(&self, exprs: Vec<CExpr<'mx>>) -> CExpr<'mx> {
+        self.create_expr(CExprKind::InitList { exprs })
     }
 }
 
@@ -73,6 +88,10 @@ impl Printer {
         match expr {
             CExprKind::Raw(raw) => self.word(*raw),
             CExprKind::Value(value) => self.print_value(*value),
+            CExprKind::Unary { op, expr } => self.ibox_delim(INDENT, ("(", ")"), 0, |this| {
+                this.word(*op);
+                this.print_expr(expr);
+            }),
             CExprKind::Binary { lhs, rhs, op } => self.ibox_delim(INDENT, ("(", ")"), 0, |this| {
                 this.ibox(-INDENT, |this| this.print_expr(lhs));
 
@@ -82,9 +101,13 @@ impl Printer {
 
                 this.print_expr(rhs);
             }),
+            CExprKind::Index { expr, index } => {
+                self.print_expr(expr);
+                self.ibox_delim(INDENT, ("[", "]"), 0, |this| this.print_expr(index));
+            }
             CExprKind::Cast { ty, expr } => self.ibox(INDENT, |this| {
                 this.word("(");
-                this.print_ty(*ty);
+                this.print_ty_decl(*ty, None);
                 this.word(")");
 
                 this.nbsp();
@@ -105,6 +128,11 @@ impl Printer {
                     this.word(".");
                 }
                 this.word(field.to_string());
+            }),
+            CExprKind::InitList { exprs } => self.ibox(INDENT, |this| {
+                this.ibox_delim(INDENT, ("{", "}"), 0, |this| {
+                    this.seperated(",", exprs, |this, expr| this.print_expr(expr));
+                })
             }),
         }
     }

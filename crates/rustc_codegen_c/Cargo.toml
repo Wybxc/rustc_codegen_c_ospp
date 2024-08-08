@@ -8,6 +8,11 @@ crate-type = ["dylib"]
 
 [dependencies]
 rustc_codegen_c_ast = { path = "../rustc_codegen_c_ast" }
+color-backtrace = { version = "0.6", optional = true }
+
+[features]
+default = []
+debug = ["color-backtrace"]
 
 # This package uses rustc crates.
 [package.metadata.rust-analyzer]

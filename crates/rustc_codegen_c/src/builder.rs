@@ -5,14 +5,21 @@ use std::ops::Deref;
 use rustc_abi::{HasDataLayout, TargetDataLayout};
 use rustc_codegen_c_ast::func::CFunc;
 use rustc_codegen_c_ast::r#type::CTy;
-use rustc_codegen_ssa::traits::{BackendTypes, BuilderMethods, HasCodegen, IntrinsicCallMethods};
+use rustc_codegen_ssa::common::AtomicOrdering;
+use rustc_codegen_ssa::mir::operand::OperandRef;
+use rustc_codegen_ssa::mir::place::PlaceRef;
+use rustc_codegen_ssa::traits::{
+    BackendTypes, BuilderMethods, HasCodegen, IntrinsicCallMethods, OverflowOp,
+};
+use rustc_codegen_ssa::MemFlags;
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasParamEnv, HasTyCtxt, LayoutError, LayoutOfHelpers,
     TyAndLayout,
 };
-use rustc_middle::ty::{ParamEnv, Ty, TyCtxt};
+use rustc_middle::ty::{ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_target::abi::call::FnAbi;
 use rustc_target::spec::{HasTargetSpec, Target};
+use rustc_type_ir::IntTy;
 
 use crate::context::CodegenCx;
 
@@ -42,7 +49,7 @@ impl<'tcx, 'mx> HasCodegen<'tcx> for Builder<'_, 'tcx, 'mx> {
 
 impl<'tcx, 'mx> HasDataLayout for Builder<'_, 'tcx, 'mx> {
     fn data_layout(&self) -> &TargetDataLayout {
-        todo!()
+        self.cx.data_layout()
     }
 }
 
@@ -119,11 +126,12 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn append_sibling_block(&mut self, name: &str) -> Self::BasicBlock {
-        todo!()
+        // assume there is only one basic block
+        self.bb
     }
 
     fn switch_to_block(&mut self, llbb: Self::BasicBlock) {
-        todo!()
+        // TODO
     }
 
     fn ret_void(&mut self) {
@@ -144,7 +152,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         then_llbb: Self::BasicBlock,
         else_llbb: Self::BasicBlock,
     ) {
-        todo!()
+        // TODO: cond_br
     }
 
     fn switch(
@@ -182,7 +190,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         let ty = lhs.1;
         let ret = self.bb.0.next_local_var();
 
-        self.bb.0.push_stmt(mcx.decl_stmt(mcx.var(
+        self.bb.0.push_stmt(mcx.decl(mcx.var(
             ret,
             ty,
             Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), "+")),
@@ -343,18 +351,44 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         todo!()
     }
 
+    // returns: (value: ty, overflowed: bool)
     fn checked_binop(
         &mut self,
-        oop: rustc_codegen_ssa::traits::OverflowOp,
-        ty: rustc_middle::ty::Ty<'_>,
+        oop: OverflowOp,
+        ty: Ty<'_>,
         lhs: Self::Value,
         rhs: Self::Value,
     ) -> (Self::Value, Self::Value) {
-        todo!()
+        assert!(lhs.1 == rhs.1, "Checked binop on different types");
+
+        let mcx = self.cx.mcx;
+        let ret = self.bb.0.next_local_var();
+        let overflow = self.bb.0.next_local_var();
+
+        let op = match oop {
+            OverflowOp::Add => match ty.kind() {
+                TyKind::Int(IntTy::I32) => "__rust_checked_add_i32",
+                _ => todo!(),
+            },
+            OverflowOp::Sub => todo!(),
+            OverflowOp::Mul => todo!(),
+        };
+
+        self.bb.0.push_stmt(mcx.decl(mcx.var(overflow, mcx.bool(), None)));
+        self.bb.0.push_stmt(mcx.decl(mcx.var(
+            ret,
+            lhs.1,
+            Some(mcx.call(
+                mcx.raw(op),
+                vec![mcx.value(lhs.0), mcx.value(rhs.0), mcx.unary("&", mcx.value(overflow))],
+            )),
+        )));
+
+        ((ret, lhs.1), (overflow, mcx.bool()))
     }
 
     fn from_immediate(&mut self, val: Self::Value) -> Self::Value {
-        todo!()
+        val // TODO: other circumstances?
     }
 
     fn to_immediate_scalar(&mut self, val: Self::Value, scalar: rustc_abi::Scalar) -> Self::Value {
@@ -362,7 +396,20 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn alloca(&mut self, size: rustc_abi::Size, align: rustc_abi::Align) -> Self::Value {
-        todo!()
+        let mcx = self.cx.mcx;
+
+        let buf = self.bb.0.next_local_var();
+        self.bb.0.push_stmt(mcx.decl(mcx.var(
+            buf,
+            mcx.arr(mcx.char(), size.bytes_usize()),
+            Some(mcx.init_list(vec![mcx.value(mcx.scalar(0))])),
+        )));
+
+        let ret = self.bb.0.next_local_var();
+        let ty = mcx.ptr(mcx.char());
+        self.bb.0.push_stmt(mcx.decl(mcx.var(ret, ty, Some(mcx.cast(ty, mcx.value(buf))))));
+
+        (ret, ty)
     }
 
     fn dynamic_alloca(&mut self, size: Self::Value, align: rustc_abi::Align) -> Self::Value {
@@ -389,16 +436,20 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
 
     fn load_operand(
         &mut self,
-        place: rustc_codegen_ssa::mir::place::PlaceRef<'tcx, Self::Value>,
-    ) -> rustc_codegen_ssa::mir::operand::OperandRef<'tcx, Self::Value> {
-        todo!()
+        place: PlaceRef<'tcx, Self::Value>,
+    ) -> OperandRef<'tcx, Self::Value> {
+        if place.val.llextra.is_none() {
+            OperandRef::from_immediate_or_packed_pair(self, place.val.llval, place.layout)
+        } else {
+            todo!()
+        }
     }
 
     fn write_operand_repeatedly(
         &mut self,
-        elem: rustc_codegen_ssa::mir::operand::OperandRef<'tcx, Self::Value>,
+        elem: OperandRef<'tcx, Self::Value>,
         count: u64,
-        dest: rustc_codegen_ssa::mir::place::PlaceRef<'tcx, Self::Value>,
+        dest: PlaceRef<'tcx, Self::Value>,
     ) {
         todo!()
     }
@@ -425,16 +476,20 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         val: Self::Value,
         ptr: Self::Value,
         align: rustc_abi::Align,
-        flags: rustc_codegen_ssa::MemFlags,
+        flags: MemFlags, // TODO: align & flags
     ) -> Self::Value {
-        todo!()
+        let mcx = self.cx.mcx;
+        self.bb
+            .0
+            .push_stmt(mcx.expr(mcx.assign(mcx.unary("*", mcx.value(ptr.0)), mcx.value(val.0))));
+        (mcx.scalar(0), mcx.int(IntTy::I32))
     }
 
     fn atomic_store(
         &mut self,
         val: Self::Value,
         ptr: Self::Value,
-        order: rustc_codegen_ssa::common::AtomicOrdering,
+        order: AtomicOrdering,
         size: rustc_abi::Size,
     ) {
         todo!()
@@ -450,7 +505,22 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         ptr: Self::Value,
         indices: &[Self::Value],
     ) -> Self::Value {
-        todo!()
+        assert!(indices.len() == 1, "todo: inbounds_gep only supports one index");
+        let mcx = self.cx.mcx;
+        let ptr_ty = mcx.ptr(ty);
+        let arr = self.bb.0.next_local_var();
+        self.bb.0.push_stmt(mcx.decl(mcx.var(
+            arr,
+            ptr_ty,
+            Some(mcx.cast(ptr_ty, mcx.value(ptr.0))),
+        )));
+        let ret = self.bb.0.next_local_var();
+        self.bb.0.push_stmt(mcx.decl(mcx.var(
+            ret,
+            ptr_ty,
+            Some(mcx.unary("&", mcx.index(mcx.value(arr), mcx.value(indices[0].0)))),
+        )));
+        (ret, ptr_ty)
     }
 
     fn trunc(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {
@@ -535,7 +605,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
                 ],
             );
         }
-        self.bb.0.push_stmt(mcx.decl_stmt(mcx.var(ret, dest_ty, Some(cast))));
+        self.bb.0.push_stmt(mcx.decl(mcx.var(ret, dest_ty, Some(cast))));
         (ret, dest_ty)
     }
 

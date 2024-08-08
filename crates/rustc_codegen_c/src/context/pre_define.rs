@@ -32,7 +32,7 @@ impl<'tcx, 'mx> PreDefineMethods<'tcx> for CodegenCx<'tcx, 'mx> {
         let ret = self.immediate_backend_type(fn_abi.ret.layout);
 
         let func = CFuncKind::new(self.mcx.alloc_str(symbol_name), ret, args);
-        let func = Interned::new_unchecked(self.mcx.func(func));
+        let func = Interned::new_unchecked(self.mcx.create_func(func));
         self.mcx.module().push_func(func);
         self.function_instances.borrow_mut().insert(instance, func);
     }

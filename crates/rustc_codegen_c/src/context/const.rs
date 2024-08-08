@@ -2,6 +2,7 @@ use rustc_codegen_c_ast::expr::CValue;
 use rustc_codegen_c_ast::r#type::{CTy, CTyKind};
 use rustc_codegen_ssa::traits::ConstMethods;
 use rustc_const_eval::interpret::{ConstAllocation, Scalar};
+use rustc_type_ir::UintTy;
 
 use crate::context::CodegenCx;
 
@@ -11,6 +12,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
             CTy::Primitive(_) => todo!(),
             CTy::Ref(tkd) => match tkd.0 {
                 CTyKind::Pointer(_) => (CValue::Null, t),
+                _ => todo!(),
             },
         }
     }
@@ -64,7 +66,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn const_usize(&self, i: u64) -> Self::Value {
-        todo!()
+        (self.mcx.scalar(i as i128), self.mcx.uint(UintTy::Usize))
     }
 
     fn const_u8(&self, i: u8) -> Self::Value {
@@ -88,7 +90,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn const_to_opt_u128(&self, v: Self::Value, sign_ext: bool) -> Option<u128> {
-        todo!()
+        None // TODO: why?
     }
 
     fn const_data_from_alloc(&self, alloc: ConstAllocation<'tcx>) -> Self::Value {

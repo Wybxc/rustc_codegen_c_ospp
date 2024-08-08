@@ -1,6 +1,7 @@
 use rustc_data_structures::intern::Interned;
 use rustc_type_ir::{IntTy, UintTy};
 
+use crate::expr::CValue;
 use crate::pretty::Printer;
 use crate::ModuleCtxt;
 
@@ -15,6 +16,7 @@ pub enum CTy<'mx> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CPTy {
     Void,
+    Bool,
     Char,
 
     Isize,
@@ -55,6 +57,7 @@ impl CPTy {
     pub fn to_str(self) -> &'static str {
         match self {
             CPTy::Void => "void",
+            CPTy::Bool => "bool",
             CPTy::Char => "char",
 
             CPTy::Isize => "size_t",
@@ -97,22 +100,36 @@ impl CPTy {
 pub enum CTyKind<'mx> {
     Pointer(CTy<'mx>),
     // Record(String),
-    // Array(CType<'mx>, usize),
+    Array(CTy<'mx>, usize),
+}
+
+impl<'mx> CTyKind<'mx> {
+    pub fn base(&self) -> CTy<'mx> {
+        match self {
+            CTyKind::Pointer(ty) => *ty,
+            CTyKind::Array(ty, _) => *ty,
+        }
+    }
 }
 
 impl<'mx> ModuleCtxt<'mx> {
     /// Get the void type
-    pub const fn get_void_type(&self) -> CTy<'mx> {
+    pub const fn void(&self) -> CTy<'mx> {
         CTy::Primitive(CPTy::Void)
     }
 
+    /// Get the bool type
+    pub const fn bool(&self) -> CTy<'mx> {
+        CTy::Primitive(CPTy::Bool)
+    }
+
     /// Get the char type
-    pub const fn get_char_type(&self) -> CTy<'mx> {
+    pub const fn char(&self) -> CTy<'mx> {
         CTy::Primitive(CPTy::Char)
     }
 
     /// Get the type of an signed integer
-    pub fn get_int_type(&self, int: IntTy) -> CTy<'mx> {
+    pub fn int(&self, int: IntTy) -> CTy<'mx> {
         match int {
             IntTy::Isize => CTy::Primitive(CPTy::Isize),
             IntTy::I8 => CTy::Primitive(CPTy::I8),
@@ -124,7 +141,7 @@ impl<'mx> ModuleCtxt<'mx> {
     }
 
     /// Get the type of an unsigned integer
-    pub fn get_uint_type(&self, uint: UintTy) -> CTy<'mx> {
+    pub fn uint(&self, uint: UintTy) -> CTy<'mx> {
         match uint {
             UintTy::Usize => CTy::Primitive(CPTy::Usize),
             UintTy::U8 => CTy::Primitive(CPTy::U8),
@@ -136,25 +153,38 @@ impl<'mx> ModuleCtxt<'mx> {
     }
 
     /// Get the pointer type
-    pub fn get_ptr_type(&self, ty: CTy<'mx>) -> CTy<'mx> {
+    pub fn ptr(&self, ty: CTy<'mx>) -> CTy<'mx> {
         self.intern_ty(CTyKind::Pointer(ty))
+    }
+
+    /// Get the array type
+    pub fn arr(&self, ty: CTy<'mx>, n: usize) -> CTy<'mx> {
+        self.intern_ty(CTyKind::Array(ty, n))
     }
 }
 
 impl Printer {
-    pub fn print_ty(&mut self, ty: CTy<'_>) {
-        match ty {
-            CTy::Primitive(ty) => self.word(ty.to_str()),
-            CTy::Ref(ty) => self.print_ty_kind(ty.0),
-        }
-    }
-
-    fn print_ty_kind(&mut self, ty: &CTyKind<'_>) {
-        match ty {
-            CTyKind::Pointer(ty) => {
-                self.print_ty(*ty);
-                self.word("*");
+    pub fn print_ty_decl(&mut self, mut ty: CTy, val: Option<CValue>) {
+        let mut prefix = String::new();
+        let mut postfix = String::new();
+        while let CTy::Ref(kind) = ty {
+            match kind.0 {
+                CTyKind::Pointer(_) => prefix += "*",
+                CTyKind::Array(_, n) => postfix += &format!("[{}]", n),
             }
+            ty = kind.0.base();
+        }
+
+        let CTy::Primitive(ty) = ty else { unreachable!() };
+        self.word(ty.to_str());
+        if let Some(val) = val {
+            self.nbsp();
+            self.word(prefix);
+            self.print_value(val);
+            self.word(postfix);
+        } else {
+            self.word(prefix);
+            self.word(postfix);
         }
     }
 }

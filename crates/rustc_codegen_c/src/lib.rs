@@ -243,5 +243,9 @@ impl WriteBackendMethods for CCodegen {
 /// This is the entrypoint for a hot plugged codegen backend.
 #[no_mangle]
 pub fn __rustc_codegen_backend() -> Box<dyn CodegenBackend> {
+    #[cfg(feature = "debug")]
+    {
+        color_backtrace::install();
+    }
     Box::new(CCodegen {})
 }

@@ -15,12 +15,12 @@ pub enum CStmtKind<'mx> {
 }
 
 impl<'mx> ModuleCtxt<'mx> {
-    pub fn stmt(self, stmt: CStmtKind<'mx>) -> CStmt<'mx> {
+    fn create_stmt(self, stmt: CStmtKind<'mx>) -> CStmt<'mx> {
         self.arena().alloc(stmt)
     }
 
     pub fn compound(self, stmts: Vec<CStmt<'mx>>) -> CStmt<'mx> {
-        self.stmt(CStmtKind::Compound(stmts))
+        self.create_stmt(CStmtKind::Compound(stmts))
     }
 
     // pub fn if_stmt(
@@ -33,15 +33,15 @@ impl<'mx> ModuleCtxt<'mx> {
     // }
 
     pub fn ret(self, expr: Option<CExpr<'mx>>) -> CStmt<'mx> {
-        self.stmt(CStmtKind::Return(expr))
+        self.create_stmt(CStmtKind::Return(expr))
     }
 
-    pub fn decl_stmt(self, decl: CDecl<'mx>) -> CStmt<'mx> {
-        self.stmt(CStmtKind::Decl(decl))
+    pub fn decl(self, decl: CDecl<'mx>) -> CStmt<'mx> {
+        self.create_stmt(CStmtKind::Decl(decl))
     }
 
-    pub fn expr_stmt(self, expr: CExpr<'mx>) -> CStmt<'mx> {
-        self.stmt(CStmtKind::Expr(expr))
+    pub fn expr(self, expr: CExpr<'mx>) -> CStmt<'mx> {
+        self.create_stmt(CStmtKind::Expr(expr))
     }
 }
 

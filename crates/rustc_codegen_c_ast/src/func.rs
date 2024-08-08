@@ -43,7 +43,7 @@ impl<'mx> CFuncKind<'mx> {
 }
 
 impl<'mx> ModuleCtxt<'mx> {
-    pub fn func(&self, func: CFuncKind<'mx>) -> &'mx CFuncKind<'mx> {
+    pub fn create_func(&self, func: CFuncKind<'mx>) -> &'mx CFuncKind<'mx> {
         self.arena().alloc(func)
     }
 }
@@ -64,17 +64,13 @@ impl Printer {
 
     fn print_signature(&mut self, func: CFunc) {
         self.ibox(0, |this| {
-            this.print_ty(func.0.ty);
+            this.print_ty_decl(func.0.ty, None);
             this.softbreak();
             this.word(func.0.name.to_string());
 
             this.valign_delim(("(", ")"), |this| {
-                this.seperated(",", &func.0.params, |this, (ty, name)| {
-                    this.ibox(0, |this| {
-                        this.print_ty(*ty);
-                        this.softbreak();
-                        this.print_value(*name);
-                    })
+                this.seperated(",", &func.0.params, |this, &(ty, name)| {
+                    this.print_ty_decl(ty, Some(name));
                 })
             });
         });

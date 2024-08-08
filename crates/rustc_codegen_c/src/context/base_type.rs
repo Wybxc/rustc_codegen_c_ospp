@@ -5,27 +5,27 @@ use crate::context::CodegenCx;
 
 impl<'tcx, 'mx> BaseTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     fn type_i8(&self) -> Self::Type {
-        self.mcx.get_int_type(IntTy::I8)
+        self.mcx.int(IntTy::I8)
     }
 
     fn type_i16(&self) -> Self::Type {
-        self.mcx.get_int_type(IntTy::I16)
+        self.mcx.int(IntTy::I16)
     }
 
     fn type_i32(&self) -> Self::Type {
-        self.mcx.get_int_type(IntTy::I32)
+        self.mcx.int(IntTy::I32)
     }
 
     fn type_i64(&self) -> Self::Type {
-        self.mcx.get_int_type(IntTy::I64)
+        self.mcx.int(IntTy::I64)
     }
 
     fn type_i128(&self) -> Self::Type {
-        self.mcx.get_int_type(IntTy::I128)
+        self.mcx.int(IntTy::I128)
     }
 
     fn type_isize(&self) -> Self::Type {
-        self.mcx.get_int_type(IntTy::Isize)
+        self.mcx.int(IntTy::Isize)
     }
 
     fn type_f16(&self) -> Self::Type {
@@ -57,7 +57,7 @@ impl<'tcx, 'mx> BaseTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn type_ptr(&self) -> Self::Type {
-        self.mcx.get_ptr_type(self.mcx.get_void_type())
+        self.mcx.ptr(self.mcx.void())
     }
 
     fn type_ptr_ext(&self, address_space: rustc_abi::AddressSpace) -> Self::Type {

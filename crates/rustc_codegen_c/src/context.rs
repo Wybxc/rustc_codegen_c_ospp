@@ -35,7 +35,6 @@ pub struct CodegenCx<'tcx, 'mx> {
 
 impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
     pub fn new(tcx: TyCtxt<'tcx>, mcx: ModuleCtxt<'mx>) -> Self {
-        mcx.module().push_includes(&["stdlib.h", "stdint.h"]);
         Self { tcx, mcx, function_instances: RefCell::new(FxHashMap::default()) }
     }
 }
@@ -71,7 +70,7 @@ impl<'tcx, 'mx> HasTyCtxt<'tcx> for CodegenCx<'tcx, 'mx> {
 
 impl<'tcx, 'mx> HasDataLayout for CodegenCx<'tcx, 'mx> {
     fn data_layout(&self) -> &TargetDataLayout {
-        todo!()
+        self.tcx.data_layout()
     }
 }
 

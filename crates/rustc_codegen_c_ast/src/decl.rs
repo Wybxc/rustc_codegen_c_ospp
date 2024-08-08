@@ -15,23 +15,21 @@ pub enum CDeclKind<'mx> {
 }
 
 impl<'mx> ModuleCtxt<'mx> {
-    pub fn decl(self, decl: CDeclKind<'mx>) -> CDecl<'mx> {
+    fn create_decl(self, decl: CDeclKind<'mx>) -> CDecl<'mx> {
         self.arena().alloc(decl)
     }
 
     pub fn var(self, name: CValue<'mx>, ty: CTy<'mx>, init: Option<CExpr<'mx>>) -> CDecl<'mx> {
-        self.decl(CDeclKind::Var { name, ty, init })
+        self.create_decl(CDeclKind::Var { name, ty, init })
     }
 }
 
 impl Printer {
     pub fn print_decl(&mut self, decl: CDecl) {
         match decl {
-            CDeclKind::Var { name, ty, init } => {
+            &CDeclKind::Var { name, ty, init } => {
                 self.ibox(INDENT, |this| {
-                    this.print_ty(*ty);
-                    this.nbsp();
-                    this.print_value(*name);
+                    this.print_ty_decl(ty, Some(name));
                     if let Some(init) = init {
                         this.word(" =");
                         this.softbreak();

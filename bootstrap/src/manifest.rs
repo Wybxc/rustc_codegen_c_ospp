@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub struct Manifest {
+    pub debug: bool,
     pub release: bool,
     pub out_dir: PathBuf,
 }
@@ -14,6 +15,9 @@ impl Manifest {
         cprintln!("<b>[BUILD]</b> codegen backend");
         let mut command = Command::new("cargo");
         command.arg("build").args(["--manifest-path", "crates/Cargo.toml"]);
+        if self.debug {
+            command.args(["-F", "debug"]);
+        }
         if self.release {
             command.arg("--release");
         }
@@ -47,6 +51,9 @@ impl Manifest {
             .args(["-C", "panic=abort"])
             .args(["-C", "lto=false"])
             .arg(format!("-Lall={}", self.out_dir.display()));
+        if self.debug {
+            command.env("RUST_BACKTRACE", "full");
+        }
         command
     }
 }
