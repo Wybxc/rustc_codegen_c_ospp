@@ -5,7 +5,7 @@ use std::ops::Deref;
 use rustc_abi::{HasDataLayout, TargetDataLayout};
 use rustc_codegen_c_ast::func::CFunc;
 use rustc_codegen_c_ast::r#type::CTy;
-use rustc_codegen_ssa::common::AtomicOrdering;
+use rustc_codegen_ssa::common::{AtomicOrdering, IntPredicate, RealPredicate};
 use rustc_codegen_ssa::mir::operand::OperandRef;
 use rustc_codegen_ssa::mir::place::PlaceRef;
 use rustc_codegen_ssa::traits::{
@@ -212,7 +212,19 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn sub(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        todo!()
+        assert!(lhs.1 == rhs.1, "cannot sub different types");
+
+        let mcx = self.cx.mcx;
+        let ty = lhs.1;
+        let ret = self.bb.0.next_local_var();
+
+        self.bb.0.push_stmt(mcx.decl(mcx.var(
+            ret,
+            ty,
+            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), "-")),
+        )));
+
+        (ret, ty)
     }
 
     fn fsub(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -228,7 +240,19 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn mul(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        todo!()
+        assert!(lhs.1 == rhs.1, "cannot mul different types");
+
+        let mcx = self.cx.mcx;
+        let ty = lhs.1;
+        let ret = self.bb.0.next_local_var();
+
+        self.bb.0.push_stmt(mcx.decl(mcx.var(
+            ret,
+            ty,
+            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), "*")),
+        )));
+
+        (ret, ty)
     }
 
     fn fmul(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -252,7 +276,19 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn sdiv(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        todo!()
+        assert!(lhs.1 == rhs.1, "cannot div different types");
+
+        let mcx = self.cx.mcx;
+        let ty = lhs.1;
+        let ret = self.bb.0.next_local_var();
+
+        self.bb.0.push_stmt(mcx.decl(mcx.var(
+            ret,
+            ty,
+            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), "/")),
+        )));
+
+        (ret, ty)
     }
 
     fn exactsdiv(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -593,9 +629,10 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         let ret = self.bb.0.next_local_var();
 
         let dest = if let CTy::Primitive(ty) = dest_ty { ty } else { unreachable!() };
-        let mut cast = mcx.cast(CTy::Primitive(dest), mcx.value(val.0));
-        if dest.is_signed() {
-            cast = mcx.call(
+
+        let cast = if dest.is_signed() {
+            let cast = mcx.cast(CTy::Primitive(dest.to_unsigned()), mcx.value(val.0));
+            mcx.call(
                 mcx.raw("__rust_utos"),
                 vec![
                     mcx.raw(dest.to_unsigned().to_str()),
@@ -603,8 +640,10 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
                     cast,
                     mcx.raw(dest.max_value()),
                 ],
-            );
-        }
+            )
+        } else {
+            mcx.cast(CTy::Primitive(dest), mcx.value(val.0))
+        };
         self.bb.0.push_stmt(mcx.decl(mcx.var(ret, dest_ty, Some(cast))));
         (ret, dest_ty)
     }
@@ -613,21 +652,35 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         todo!()
     }
 
-    fn icmp(
-        &mut self,
-        op: rustc_codegen_ssa::common::IntPredicate,
-        lhs: Self::Value,
-        rhs: Self::Value,
-    ) -> Self::Value {
-        todo!()
+    fn icmp(&mut self, op: IntPredicate, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
+        let op = match op {
+            IntPredicate::IntEQ => "==",
+            IntPredicate::IntNE => "!=",
+            IntPredicate::IntUGT => ">",
+            IntPredicate::IntUGE => ">=",
+            IntPredicate::IntULT => "<",
+            IntPredicate::IntULE => "<=",
+            IntPredicate::IntSGT => ">",
+            IntPredicate::IntSGE => ">=",
+            IntPredicate::IntSLT => "<",
+            IntPredicate::IntSLE => "<=",
+        };
+
+        let mcx = self.cx.mcx;
+        let ret = self.bb.0.next_local_var();
+        let ty = mcx.bool();
+        let lhs = mcx.value(lhs.0);
+        let rhs = mcx.value(rhs.0);
+
+        self.bb.0.push_stmt(mcx.decl(mcx.var(
+            ret,
+            ty,
+            Some(mcx.call(mcx.raw(op), vec![lhs, rhs])),
+        )));
+        (ret, ty)
     }
 
-    fn fcmp(
-        &mut self,
-        op: rustc_codegen_ssa::common::RealPredicate,
-        lhs: Self::Value,
-        rhs: Self::Value,
-    ) -> Self::Value {
+    fn fcmp(&mut self, op: RealPredicate, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
         todo!()
     }
 

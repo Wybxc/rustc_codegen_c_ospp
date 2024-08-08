@@ -57,6 +57,57 @@ impl Add for i32 {
     }
 }
 
+#[lang = "sub"]
+pub trait Sub<Rhs = Self> {
+    type Output;
+
+    #[must_use = "this returns the result of the operation, without modifying the original"]
+    fn sub(self, rhs: Rhs) -> Self::Output;
+}
+
+impl Sub for i32 {
+    type Output = i32;
+
+    #[inline]
+    fn sub(self, other: i32) -> i32 {
+        self - other
+    }
+}
+
+#[lang = "mul"]
+pub trait Mul<Rhs = Self> {
+    type Output;
+
+    #[must_use = "this returns the result of the operation, without modifying the original"]
+    fn mul(self, rhs: Rhs) -> Self::Output;
+}
+
+impl Mul for i32 {
+    type Output = i32;
+
+    #[inline]
+    fn mul(self, other: i32) -> i32 {
+        self * other
+    }
+}
+
+#[lang = "div"]
+pub trait Div<Rhs = Self> {
+    type Output;
+
+    #[must_use = "this returns the result of the operation, without modifying the original"]
+    fn div(self, rhs: Rhs) -> Self::Output;
+}
+
+impl Div for i32 {
+    type Output = i32;
+
+    #[inline]
+    fn div(self, other: i32) -> i32 {
+        self / other
+    }
+}
+
 #[lang = "phantom_data"]
 pub struct PhantomData<T: ?Sized>;
 

@@ -11,5 +11,5 @@ pub fn main() -> i32 {
 
 #[no_mangle]
 pub fn foo(x: i32, y: i32) -> i8 {
-    (x + y) as i8
+    ((x + y) * (x - y) / 2) as i8
 }
