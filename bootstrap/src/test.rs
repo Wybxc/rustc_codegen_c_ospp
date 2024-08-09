@@ -26,11 +26,15 @@ impl TestCommand {
 
         let filechecker = FileChecker::new();
         for testcase in testcases {
-            cprint!("Testing {}...", testcase.name);
             match testcase.test {
                 TestType::FileCheck => {
+                    cprint!("File checking {}...", testcase.name);
                     testcase.build(manifest);
                     filechecker.run(&testcase.source, &testcase.output);
+                }
+                TestType::Compile => {
+                    cprint!("Compiling {}...", testcase.name);
+                    testcase.build(manifest);
                 }
             }
             cprintln!("<g>OK</g>");
@@ -39,6 +43,18 @@ impl TestCommand {
 
     pub fn collect_testcases(&self, manifest: &Manifest) -> Vec<TestCase> {
         let mut result = vec![];
+
+        // Examples
+        for case in glob("example/*.rs").unwrap() {
+            let case = case.unwrap();
+            let filename = case.file_stem().unwrap();
+            if filename == "mini_core" {
+                continue;
+            }
+            let name = format!("example/{}", filename.to_string_lossy());
+            let output = manifest.out_dir.join("example").join(Path::new(filename));
+            result.push(TestCase { name, source: case, output, test: TestType::Compile })
+        }
 
         // Codegen tests
         for case in glob("tests/codegen/*.rs").unwrap() {
@@ -54,6 +70,7 @@ impl TestCommand {
 }
 
 pub enum TestType {
+    Compile,
     FileCheck,
 }
 
