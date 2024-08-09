@@ -49,6 +49,10 @@ impl Printer {
 
             this.word(module.helper);
 
+            this.hardbreak();
+            this.word("/* rustc_codegen_c: interface */");
+            this.hardbreak();
+
             for &decl in module.decls.borrow().iter() {
                 this.hardbreak();
                 this.hardbreak();
@@ -59,6 +63,10 @@ impl Printer {
                 this.hardbreak();
                 this.print_func_decl(func);
             }
+
+            this.hardbreak();
+            this.hardbreak();
+            this.word("/* rustc_codegen_c: implementation */");
 
             for &func in module.funcs.borrow().iter() {
                 this.hardbreak();

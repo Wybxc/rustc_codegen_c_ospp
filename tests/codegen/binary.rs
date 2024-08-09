@@ -1,13 +1,19 @@
-#![feature(no_core)]
-#![no_core]
+#![allow(internal_features)]
+#![feature(core_intrinsics)]
+#![no_std]
 #![no_main]
 
-extern crate mini_core;
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    core::intrinsics::abort();
+}
 
-// function signatures
-// CHECK-LABEL: test_add
-// CHECK-LABEL: test_sub
-// CHECK-LABEL: test_mul
+pub mod libc {
+    #[link(name = "c")]
+    extern "C" {}
+}
+
+// CHECK-LABEL: rustc_codegen_c: implementation
 
 // CHECK-LABEL: test_add
 // CHECK: +

@@ -13,8 +13,7 @@ pub mod libc {
     extern "C" {}
 }
 
-/// CHECK-LABEL: foo
-/// CHECK-LABEL: main
+// CHECK-LABEL: rustc_codegen_c: implementation
 
 #[inline(never)]
 fn foo(x: u32, y: u32) -> i32 {
