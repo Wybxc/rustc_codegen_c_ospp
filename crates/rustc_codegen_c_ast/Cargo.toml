@@ -4,6 +4,7 @@ edition = "2021"
 version.workspace = true
 
 [dependencies]
+bitflags = "2.6.0"
 
 # This package uses rustc crates.
 [package.metadata.rust-analyzer]
