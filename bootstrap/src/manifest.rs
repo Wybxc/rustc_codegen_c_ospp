@@ -48,6 +48,7 @@ impl Manifest {
     pub fn rustc(&self) -> Command {
         let mut command = Command::new("rustc");
         command
+            .args(["--edition", "2021"])
             .arg("-Z")
             .arg(format!("codegen-backend={}", self.codegen_backend().display()))
             .args(["-C", "panic=abort"])

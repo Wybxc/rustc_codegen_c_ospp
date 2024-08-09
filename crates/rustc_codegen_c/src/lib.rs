@@ -110,7 +110,7 @@ impl ExtraBackendMethods for CCodegen {
         _kind: AllocatorKind,
         _alloc_error_handler_kind: AllocatorKind,
     ) -> Self::Module {
-        todo!()
+        Default::default() // TODO
     }
 
     fn compile_codegen_unit(

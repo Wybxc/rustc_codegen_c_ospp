@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 
+use std::cell::Cell;
 use std::fmt::{self, Display};
 
 use crate::r#type::{CTy, CTyKind};
@@ -53,6 +54,7 @@ pub struct ModuleArena<'mx> {
     pub arena: arena::Arena<'mx>,
     pub module: module::Module<'mx>,
     interner: intern::Interner<'mx>,
+    global_var_counter: Cell<usize>,
 }
 
 impl<'mx> ModuleArena<'mx> {
@@ -61,6 +63,7 @@ impl<'mx> ModuleArena<'mx> {
             arena: arena::Arena::default(),
             module: module::Module::new(helper),
             interner: intern::Interner::default(),
+            global_var_counter: Cell::new(0),
         }
     }
 }

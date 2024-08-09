@@ -1,7 +1,7 @@
 use rustc_codegen_c_ast::expr::CValue;
 use rustc_codegen_c_ast::r#type::{CTy, CTyKind};
 use rustc_codegen_ssa::traits::ConstMethods;
-use rustc_const_eval::interpret::{ConstAllocation, Scalar};
+use rustc_const_eval::interpret::{ConstAllocation, GlobalAlloc, Scalar};
 use rustc_type_ir::UintTy;
 
 use crate::context::CodegenCx;
@@ -105,7 +105,34 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     ) -> Self::Value {
         match cv {
             Scalar::Int(scalar) => (self.mcx.scalar(scalar.to_int(scalar.size())), ty),
-            Scalar::Ptr(_, _) => todo!(),
+            Scalar::Ptr(ptr, _) => {
+                let (prov, offset) = ptr.into_parts(); // we know the `offset` is relative
+                assert!(offset.bytes() == 0, "TODO");
+                let alloc_id = prov.alloc_id();
+                let base_addr = match self.tcx.global_alloc(alloc_id) {
+                    GlobalAlloc::Function(_) => todo!(),
+                    GlobalAlloc::VTable(_, _) => todo!(),
+                    GlobalAlloc::Static(_) => todo!(),
+                    GlobalAlloc::Memory(alloc) => {
+                        let alloc = alloc.inner();
+                        assert!(alloc.provenance().ptrs().is_empty(), "TODO");
+                        let bytes =
+                            alloc.inspect_with_uninit_and_ptr_outside_interpreter(0..alloc.len());
+
+                        let mcx = self.mcx;
+                        let var = mcx.next_global_var();
+                        mcx.module().push_decl(mcx.var(
+                            var,
+                            mcx.arr(mcx.char(), alloc.len()),
+                            Some(mcx.init_list(
+                                bytes.iter().map(|&b| mcx.value(mcx.scalar(b as i128))).collect(),
+                            )),
+                        ));
+                        var
+                    }
+                };
+                (base_addr, ty) // this may create a char* implicitly casted to other pointers
+            }
         }
     }
 

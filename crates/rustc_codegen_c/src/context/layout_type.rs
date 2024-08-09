@@ -1,10 +1,10 @@
-use rustc_abi::Abi;
+use rustc_abi::{Abi, Integer, Primitive};
 use rustc_codegen_c_ast::r#type::CTy;
 use rustc_codegen_ssa::traits::LayoutTypeMethods;
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::Ty;
 use rustc_target::abi::call::FnAbi;
-use rustc_type_ir::{IntTy, TyKind};
+use rustc_type_ir::{IntTy, TyKind, UintTy};
 
 use crate::context::CodegenCx;
 
@@ -22,7 +22,7 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
             TyKind::Array(_, _) => todo!(),
             TyKind::Pat(_, _) => todo!(),
             TyKind::Slice(_) => todo!(),
-            TyKind::RawPtr(_, _) => todo!(),
+            TyKind::RawPtr(_, _) => self.mcx.int(IntTy::Isize),
             TyKind::Ref(_, ty, _) => self.mcx.ptr(self.get_cty(*ty)),
             TyKind::FnDef(_, _) => todo!(),
             TyKind::FnPtr(_) => todo!(),
@@ -53,7 +53,7 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn fn_decl_backend_type(&self, fn_abi: &FnAbi<'tcx, Ty<'tcx>>) -> Self::Type {
-        todo!()
+        self.mcx.ptr(self.mcx.void()) // TODO
     }
 
     fn fn_ptr_backend_type(&self, fn_abi: &FnAbi<'tcx, Ty<'tcx>>) -> Self::Type {
@@ -76,11 +76,10 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn is_backend_scalar_pair(&self, layout: TyAndLayout<'tcx>) -> bool {
-        // match layout.abi {
-        //     Abi::ScalarPair(..) => true,
-        //     Abi::Uninhabited | Abi::Scalar(_) | Abi::Vector { .. } | Abi::Aggregate { .. } => false,
-        // }
-        false
+        match layout.abi {
+            Abi::ScalarPair(..) => true,
+            Abi::Uninhabited | Abi::Scalar(_) | Abi::Vector { .. } | Abi::Aggregate { .. } => false,
+        }
     }
 
     fn scalar_pair_element_backend_type(
@@ -89,6 +88,29 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
         index: usize,
         immediate: bool,
     ) -> Self::Type {
-        todo!()
+        let (a, b) = match layout.abi {
+            Abi::ScalarPair(ref a, ref b) => (a, b),
+            _ => panic!("scalar_pair_element_backend_type({:?}): not applicable", layout),
+        };
+        let scalar = [a, b][index];
+
+        match scalar.primitive() {
+            Primitive::Int(int, true) => self.mcx.int(match int {
+                Integer::I8 => IntTy::I8,
+                Integer::I16 => IntTy::I16,
+                Integer::I32 => IntTy::I32,
+                Integer::I64 => IntTy::I64,
+                Integer::I128 => IntTy::I128,
+            }),
+            Primitive::Int(int, false) => self.mcx.uint(match int {
+                Integer::I8 => UintTy::U8,
+                Integer::I16 => UintTy::U16,
+                Integer::I32 => UintTy::U32,
+                Integer::I64 => UintTy::U64,
+                Integer::I128 => UintTy::U128,
+            }),
+            Primitive::Float(_) => todo!(),
+            Primitive::Pointer(_) => self.mcx.ptr(self.mcx.void()),
+        }
     }
 }

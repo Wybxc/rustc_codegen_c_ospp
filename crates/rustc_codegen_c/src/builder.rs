@@ -12,11 +12,12 @@ use rustc_codegen_ssa::traits::{
     BackendTypes, BuilderMethods, HasCodegen, IntrinsicCallMethods, LayoutTypeMethods, OverflowOp,
 };
 use rustc_codegen_ssa::MemFlags;
+use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrs;
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasParamEnv, HasTyCtxt, LayoutError, LayoutOfHelpers,
     TyAndLayout,
 };
-use rustc_middle::ty::{ParamEnv, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{Instance, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_target::abi::call::FnAbi;
 use rustc_target::spec::{HasTargetSpec, Target};
 use rustc_type_ir::IntTy;
@@ -180,14 +181,14 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     fn invoke(
         &mut self,
         llty: Self::Type,
-        fn_attrs: Option<&rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrs>,
-        fn_abi: Option<&rustc_target::abi::call::FnAbi<'tcx, rustc_middle::ty::Ty<'tcx>>>,
+        fn_attrs: Option<&CodegenFnAttrs>,
+        fn_abi: Option<&FnAbi<'tcx, Ty<'tcx>>>,
         llfn: Self::Value,
         args: &[Self::Value],
         then: Self::BasicBlock,
         catch: Self::BasicBlock,
         funclet: Option<&Self::Funclet>,
-        instance: Option<rustc_middle::ty::Instance<'tcx>>,
+        instance: Option<Instance<'tcx>>,
     ) -> Self::Value {
         todo!()
     }
@@ -699,7 +700,8 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn extract_value(&mut self, agg_val: Self::Value, idx: u64) -> Self::Value {
-        todo!()
+        // TODO: fat pointer?
+        agg_val
     }
 
     fn insert_value(&mut self, agg_val: Self::Value, elt: Self::Value, idx: u64) -> Self::Value {
@@ -798,14 +800,18 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     fn call(
         &mut self,
         llty: Self::Type,
-        fn_attrs: Option<&rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrs>,
-        fn_abi: Option<&rustc_target::abi::call::FnAbi<'tcx, rustc_middle::ty::Ty<'tcx>>>,
+        fn_attrs: Option<&CodegenFnAttrs>,
+        fn_abi: Option<&FnAbi<'tcx, Ty<'tcx>>>,
         llfn: Self::Value,
         args: &[Self::Value],
         funclet: Option<&Self::Funclet>,
-        instance: Option<rustc_middle::ty::Instance<'tcx>>,
+        instance: Option<Instance<'tcx>>,
     ) -> Self::Value {
-        todo!()
+        let mcx = self.cx.mcx;
+        let ret = self.func.0.next_local_var();
+        let call = mcx.call(mcx.value(llfn.0), args.iter().map(|x| mcx.value(x.0)).collect());
+        self.bb.push_stmt(mcx.expr(call)); // TODO: ret value
+        (ret, llty)
     }
 
     fn zext(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {

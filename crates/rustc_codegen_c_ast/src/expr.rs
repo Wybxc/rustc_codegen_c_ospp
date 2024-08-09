@@ -8,6 +8,8 @@ pub enum CValue<'mx> {
     Null,
     Scalar(&'mx i128),
     Local(usize),
+    Global(usize),
+    Raw(&'mx str),
 }
 
 pub type CExpr<'mx> = &'mx CExprKind<'mx>;
@@ -26,6 +28,16 @@ pub enum CExprKind<'mx> {
 }
 
 impl<'mx> ModuleCtxt<'mx> {
+    pub fn next_global_var(&self) -> CValue<'mx> {
+        let var = CValue::Global(self.0.global_var_counter.get());
+        self.0.global_var_counter.set(self.0.global_var_counter.get() + 1);
+        var
+    }
+
+    pub fn raw_var(&self, name: &'mx str) -> CValue<'mx> {
+        CValue::Raw(name)
+    }
+
     fn create_expr(&self, expr: CExprKind<'mx>) -> CExpr<'mx> {
         self.arena().alloc(expr)
     }
@@ -81,6 +93,8 @@ impl Printer {
             CValue::Null => self.word("NULL"),
             CValue::Scalar(i) => self.word(i.to_string()),
             CValue::Local(i) => self.word(format!("_{}", i)),
+            CValue::Global(i) => self.word(format!("_g{}", i)), // TODO: add module-specific prefix
+            CValue::Raw(raw) => self.word(raw.to_string()),
         }
     }
 
@@ -116,7 +130,7 @@ impl Printer {
             }),
             CExprKind::Call { callee, args } => self.ibox(INDENT, |this| {
                 this.print_expr(callee, false);
-                this.cbox_delim(INDENT, ("(", ")"),0, |this| {
+                this.cbox_delim(INDENT, ("(", ")"), 0, |this| {
                     this.seperated(",", args, |this, arg| this.print_expr(arg, false))
                 });
             }),

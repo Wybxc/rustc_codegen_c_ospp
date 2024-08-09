@@ -22,10 +22,10 @@ impl FmtCommand {
                 .arg("--all"),
         );
         for file in glob("example/**/*.rs").unwrap() {
-            self.perform(Command::new("rustfmt").arg(file.unwrap()));
+            self.perform(Command::new("rustfmt").args(["--edition", "2021"]).arg(file.unwrap()));
         }
         for file in glob("tests/**/*.rs").unwrap() {
-            self.perform(Command::new("rustfmt").arg(file.unwrap()));
+            self.perform(Command::new("rustfmt").args(["--edition", "2021"]).arg(file.unwrap()));
         }
     }
 
