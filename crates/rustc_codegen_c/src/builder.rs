@@ -27,6 +27,7 @@ mod abi;
 mod asm;
 mod coverage_info;
 mod debug_info;
+mod expr;
 mod intrinsic_call;
 mod r#static;
 
@@ -196,19 +197,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn add(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        assert!(lhs.1 == rhs.1, "cannot add different types");
-
-        let mcx = self.cx.mcx;
-        let ty = lhs.1;
-        let ret = self.func.0.next_local_var();
-
-        self.bb.push_stmt(mcx.decl(mcx.var(
-            ret,
-            ty,
-            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), "+")),
-        )));
-
-        (ret, ty)
+        self.binary_arith("+", lhs, rhs)
     }
 
     fn fadd(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -224,19 +213,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn sub(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        assert!(lhs.1 == rhs.1, "cannot sub different types");
-
-        let mcx = self.cx.mcx;
-        let ty = lhs.1;
-        let ret = self.func.0.next_local_var();
-
-        self.bb.push_stmt(mcx.decl(mcx.var(
-            ret,
-            ty,
-            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), "-")),
-        )));
-
-        (ret, ty)
+        self.binary_arith("-", lhs, rhs)
     }
 
     fn fsub(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -252,19 +229,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn mul(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        assert!(lhs.1 == rhs.1, "cannot mul different types");
-
-        let mcx = self.cx.mcx;
-        let ty = lhs.1;
-        let ret = self.func.0.next_local_var();
-
-        self.bb.push_stmt(mcx.decl(mcx.var(
-            ret,
-            ty,
-            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), "*")),
-        )));
-
-        (ret, ty)
+        self.binary_arith("*", lhs, rhs)
     }
 
     fn fmul(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -288,19 +253,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn sdiv(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        assert!(lhs.1 == rhs.1, "cannot div different types");
-
-        let mcx = self.cx.mcx;
-        let ty = lhs.1;
-        let ret = self.func.0.next_local_var();
-
-        self.bb.push_stmt(mcx.decl(mcx.var(
-            ret,
-            ty,
-            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), "/")),
-        )));
-
-        (ret, ty)
+        self.binary_arith("/", lhs, rhs)
     }
 
     fn exactsdiv(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -682,14 +635,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
             IntPredicate::IntSLE => "<=",
         };
 
-        let mcx = self.cx.mcx;
-        let ret = self.func.0.next_local_var();
-        let ty = mcx.bool();
-        let lhs = mcx.value(lhs.0);
-        let rhs = mcx.value(rhs.0);
-
-        self.bb.push_stmt(mcx.decl(mcx.var(ret, ty, Some(mcx.binary(lhs, rhs, op)))));
-        (ret, ty)
+        self.binary_cmp(op, lhs, rhs)
     }
 
     fn fcmp(&mut self, op: RealPredicate, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
