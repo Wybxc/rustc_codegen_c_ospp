@@ -53,11 +53,9 @@ impl Printer {
         &mut self,
         indent: isize,
         delim: (&'static str, &'static str),
-        padding: usize,
         op: impl FnOnce(&mut Self),
     ) {
         self.word(delim.0);
-        self.pp.break_offset(padding, 0);
         self.ibox(indent, op);
         self.word(delim.1);
     }
@@ -115,6 +113,10 @@ impl Printer {
     /// Zero break: nothing if fits, otherwise newline
     pub(crate) fn zerobreak(&mut self) {
         self.pp.zerobreak();
+    }
+
+    pub(crate) fn break_offset(&mut self, n: usize, offset: isize) {
+        self.pp.break_offset(n, offset)
     }
 
     /// Print a string

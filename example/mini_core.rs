@@ -11,6 +11,13 @@ pub macro stringify($($t:tt)*) {
 #[lang = "sized"]
 pub trait Sized {}
 
+#[lang = "receiver"]
+pub trait Receiver {}
+
+impl<T: ?Sized> Receiver for &T {}
+impl<T: ?Sized> Receiver for &mut T {}
+// impl<T: ?Sized, A: Allocator> Receiver for Box<T, A> {}
+
 #[lang = "copy"]
 pub unsafe trait Copy {}
 
@@ -48,6 +55,15 @@ pub trait Add<Rhs = Self> {
     fn add(self, rhs: Rhs) -> Self::Output;
 }
 
+impl Add for u8 {
+    type Output = u8;
+
+    #[inline]
+    fn add(self, other: u8) -> u8 {
+        self + other
+    }
+}
+
 impl Add for i32 {
     type Output = i32;
 
@@ -63,6 +79,15 @@ pub trait Sub<Rhs = Self> {
 
     #[must_use = "this returns the result of the operation, without modifying the original"]
     fn sub(self, rhs: Rhs) -> Self::Output;
+}
+
+impl Sub for u8 {
+    type Output = u8;
+
+    #[inline]
+    fn sub(self, other: u8) -> u8 {
+        self - other
+    }
 }
 
 impl Sub for i32 {
@@ -82,6 +107,15 @@ pub trait Mul<Rhs = Self> {
     fn mul(self, rhs: Rhs) -> Self::Output;
 }
 
+impl Mul for u8 {
+    type Output = u8;
+
+    #[inline]
+    fn mul(self, other: u8) -> u8 {
+        self * other
+    }
+}
+
 impl Mul for i32 {
     type Output = i32;
 
@@ -99,12 +133,108 @@ pub trait Div<Rhs = Self> {
     fn div(self, rhs: Rhs) -> Self::Output;
 }
 
+impl Div for u8 {
+    type Output = u8;
+
+    #[inline]
+    fn div(self, other: u8) -> u8 {
+        self / other
+    }
+}
+
 impl Div for i32 {
     type Output = i32;
 
     #[inline]
     fn div(self, other: i32) -> i32 {
         self / other
+    }
+}
+
+#[lang = "eq"]
+pub trait PartialEq<Rhs: ?Sized = Self> {
+    fn eq(&self, other: &Rhs) -> bool;
+    fn ne(&self, other: &Rhs) -> bool;
+}
+
+impl PartialEq for u8 {
+    fn eq(&self, other: &u8) -> bool {
+        (*self) == (*other)
+    }
+    fn ne(&self, other: &u8) -> bool {
+        (*self) != (*other)
+    }
+}
+
+impl PartialEq for u16 {
+    fn eq(&self, other: &u16) -> bool {
+        (*self) == (*other)
+    }
+    fn ne(&self, other: &u16) -> bool {
+        (*self) != (*other)
+    }
+}
+
+impl PartialEq for u32 {
+    fn eq(&self, other: &u32) -> bool {
+        (*self) == (*other)
+    }
+    fn ne(&self, other: &u32) -> bool {
+        (*self) != (*other)
+    }
+}
+
+impl PartialEq for u64 {
+    fn eq(&self, other: &u64) -> bool {
+        (*self) == (*other)
+    }
+    fn ne(&self, other: &u64) -> bool {
+        (*self) != (*other)
+    }
+}
+
+impl PartialEq for usize {
+    fn eq(&self, other: &usize) -> bool {
+        (*self) == (*other)
+    }
+    fn ne(&self, other: &usize) -> bool {
+        (*self) != (*other)
+    }
+}
+
+impl PartialEq for i8 {
+    fn eq(&self, other: &i8) -> bool {
+        (*self) == (*other)
+    }
+    fn ne(&self, other: &i8) -> bool {
+        (*self) != (*other)
+    }
+}
+
+impl PartialEq for i32 {
+    fn eq(&self, other: &i32) -> bool {
+        (*self) == (*other)
+    }
+    fn ne(&self, other: &i32) -> bool {
+        (*self) != (*other)
+    }
+}
+
+impl PartialEq for isize {
+    fn eq(&self, other: &isize) -> bool {
+        (*self) == (*other)
+    }
+    fn ne(&self, other: &isize) -> bool {
+        (*self) != (*other)
+    }
+}
+
+impl PartialEq for char {
+    fn eq(&self, other: &char) -> bool {
+        (*self) == (*other)
+    }
+    fn ne(&self, other: &char) -> bool {
+        (*self) != (*other)
     }
 }
 

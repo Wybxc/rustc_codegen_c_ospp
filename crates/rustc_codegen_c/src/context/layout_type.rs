@@ -4,15 +4,15 @@ use rustc_codegen_ssa::traits::LayoutTypeMethods;
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::Ty;
 use rustc_target::abi::call::FnAbi;
-use rustc_type_ir::TyKind;
+use rustc_type_ir::{IntTy, TyKind};
 
 use crate::context::CodegenCx;
 
 impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
     fn get_cty(&self, ty: Ty<'tcx>) -> CTy<'mx> {
         match ty.kind() {
-            TyKind::Bool => todo!(),
-            TyKind::Char => todo!(),
+            TyKind::Bool => self.mcx.bool(),
+            TyKind::Char => self.mcx.int(IntTy::I32),
             TyKind::Int(int) => self.mcx.int(*int),
             TyKind::Uint(uint) => self.mcx.uint(*uint),
             TyKind::Float(_) => todo!(),

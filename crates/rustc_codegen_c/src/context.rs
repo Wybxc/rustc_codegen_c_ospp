@@ -4,7 +4,7 @@ use std::cell::RefCell;
 
 use rustc_abi::{HasDataLayout, TargetDataLayout};
 use rustc_codegen_c_ast::expr::CValue;
-use rustc_codegen_c_ast::func::CFunc;
+use rustc_codegen_c_ast::func::{CBasicBlock, CFunc};
 use rustc_codegen_c_ast::r#type::CTy;
 use rustc_codegen_c_ast::ModuleCtxt;
 use rustc_codegen_ssa::traits::BackendTypes;
@@ -42,7 +42,7 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
 impl<'tcx, 'mx> BackendTypes for CodegenCx<'tcx, 'mx> {
     type Value = (CValue<'mx>, CTy<'mx>);
     type Function = CFunc<'mx>;
-    type BasicBlock = CFunc<'mx>;
+    type BasicBlock = (CFunc<'mx>, &'mx CBasicBlock<'mx>);
     type Type = CTy<'mx>;
     type Funclet = ();
     type DIScope = ();

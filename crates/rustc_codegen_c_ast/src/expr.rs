@@ -84,26 +84,27 @@ impl Printer {
         }
     }
 
-    pub fn print_expr(&mut self, expr: CExpr) {
+    pub fn print_expr(&mut self, expr: CExpr, outer: bool) {
+        let delim = if outer { ("", "") } else { ("(", ")") };
         match expr {
             CExprKind::Raw(raw) => self.word(*raw),
             CExprKind::Value(value) => self.print_value(*value),
-            CExprKind::Unary { op, expr } => self.ibox_delim(INDENT, ("(", ")"), 0, |this| {
+            CExprKind::Unary { op, expr } => self.ibox_delim(INDENT, delim, |this| {
                 this.word(*op);
-                this.print_expr(expr);
+                this.print_expr(expr, false);
             }),
-            CExprKind::Binary { lhs, rhs, op } => self.ibox_delim(INDENT, ("(", ")"), 0, |this| {
-                this.ibox(-INDENT, |this| this.print_expr(lhs));
+            CExprKind::Binary { lhs, rhs, op } => self.ibox_delim(INDENT, delim, |this| {
+                this.ibox(-INDENT, |this| this.print_expr(lhs, false));
 
                 this.softbreak();
                 this.word(*op);
                 this.nbsp();
 
-                this.print_expr(rhs);
+                this.print_expr(rhs, false);
             }),
             CExprKind::Index { expr, index } => {
-                self.print_expr(expr);
-                self.ibox_delim(INDENT, ("[", "]"), 0, |this| this.print_expr(index));
+                self.print_expr(expr, false);
+                self.ibox_delim(INDENT, ("[", "]"), |this| this.print_expr(index, false));
             }
             CExprKind::Cast { ty, expr } => self.ibox(INDENT, |this| {
                 this.word("(");
@@ -111,16 +112,16 @@ impl Printer {
                 this.word(")");
 
                 this.nbsp();
-                this.print_expr(expr);
+                this.print_expr(expr, false);
             }),
             CExprKind::Call { callee, args } => self.ibox(INDENT, |this| {
-                this.print_expr(callee);
-                this.cbox_delim(INDENT, ("(", ")"), 0, |this| {
-                    this.seperated(",", args, |this, arg| this.print_expr(arg))
+                this.print_expr(callee, false);
+                this.cbox_delim(INDENT, ("(", ")"),0, |this| {
+                    this.seperated(",", args, |this, arg| this.print_expr(arg, false))
                 });
             }),
             CExprKind::Member { expr, arrow, field } => self.cbox(INDENT, |this| {
-                this.print_expr(expr);
+                this.print_expr(expr, false);
                 this.zerobreak();
                 if *arrow {
                     this.word("->");
@@ -130,8 +131,8 @@ impl Printer {
                 this.word(field.to_string());
             }),
             CExprKind::InitList { exprs } => self.ibox(INDENT, |this| {
-                this.ibox_delim(INDENT, ("{", "}"), 0, |this| {
-                    this.seperated(",", exprs, |this, expr| this.print_expr(expr));
+                this.ibox_delim(INDENT, ("{", "}"), |this| {
+                    this.seperated(",", exprs, |this, expr| this.print_expr(expr, false));
                 })
             }),
         }

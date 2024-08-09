@@ -31,7 +31,8 @@ impl<'tcx, 'mx> PreDefineMethods<'tcx> for CodegenCx<'tcx, 'mx> {
         let args = fn_abi.args.iter().map(|arg| self.immediate_backend_type(arg.layout));
         let ret = self.immediate_backend_type(fn_abi.ret.layout);
 
-        let func = CFuncKind::new(self.mcx.alloc_str(symbol_name), ret, args);
+        let symbol_name = symbol_name.replace('.', "_");
+        let func = CFuncKind::new(self.mcx.alloc_str(&symbol_name), ret, args);
         let func = Interned::new_unchecked(self.mcx.create_func(func));
         self.mcx.module().push_func(func);
         self.function_instances.borrow_mut().insert(instance, func);

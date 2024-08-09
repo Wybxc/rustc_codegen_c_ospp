@@ -33,7 +33,7 @@ impl Printer {
                     if let Some(init) = init {
                         this.word(" =");
                         this.softbreak();
-                        this.print_expr(init);
+                        this.print_expr(init, true);
                     }
                     this.word(";");
                 });
