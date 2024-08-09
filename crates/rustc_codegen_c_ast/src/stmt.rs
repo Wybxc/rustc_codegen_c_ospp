@@ -7,7 +7,6 @@ pub type CStmt<'mx> = &'mx CStmtKind<'mx>;
 
 #[derive(Debug, Clone)]
 pub enum CStmtKind<'mx> {
-    Compound(Vec<CStmt<'mx>>),
     If { cond: CExpr<'mx>, then_br: CStmt<'mx>, else_br: Option<CStmt<'mx>> },
     Return(Option<CExpr<'mx>>),
     Decl(CDecl<'mx>),
@@ -18,10 +17,6 @@ pub enum CStmtKind<'mx> {
 impl<'mx> ModuleCtxt<'mx> {
     fn create_stmt(self, stmt: CStmtKind<'mx>) -> CStmt<'mx> {
         self.arena().alloc(stmt)
-    }
-
-    pub fn compound(self, stmts: Vec<CStmt<'mx>>) -> CStmt<'mx> {
-        self.create_stmt(CStmtKind::Compound(stmts))
     }
 
     pub fn if_stmt(
@@ -53,7 +48,6 @@ impl<'mx> ModuleCtxt<'mx> {
 impl Printer {
     pub fn print_stmt(&mut self, stmt: CStmt) {
         match stmt {
-            CStmtKind::Compound(stmts) => self.print_compound(stmts),
             CStmtKind::If { cond, then_br, else_br } => self.ibox(INDENT, |this| {
                 this.word("if");
                 this.softbreak();
@@ -86,17 +80,5 @@ impl Printer {
             }
             CStmtKind::Goto(label) => self.word(format!("goto {};", label)),
         }
-    }
-
-    pub(crate) fn print_compound(&mut self, stmts: &[CStmt]) {
-        self.cbox_delim(INDENT, ("{", "}"), 1, |this| {
-            if let Some((first, rest)) = stmts.split_first() {
-                this.print_stmt(first);
-                for stmt in rest {
-                    this.hardbreak();
-                    this.print_stmt(stmt);
-                }
-            }
-        });
     }
 }

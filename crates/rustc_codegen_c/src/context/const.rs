@@ -121,13 +121,20 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
 
                         let mcx = self.mcx;
                         let var = mcx.next_global_var();
-                        mcx.module().push_decl(mcx.var(
-                            var,
-                            mcx.arr(mcx.char(), alloc.len()),
-                            Some(mcx.init_list(
-                                bytes.iter().map(|&b| mcx.value(mcx.scalar(b as i128))).collect(),
-                            )),
-                        ));
+                        mcx.module().push_decl(
+                            mcx.var(
+                                var,
+                                mcx.arr(mcx.char(), alloc.len()),
+                                Some(
+                                    mcx.init_list(
+                                        bytes
+                                            .iter()
+                                            .map(|&b| mcx.value(mcx.scalar(b as i128)))
+                                            .collect::<Box<[_]>>(),
+                                    ),
+                                ),
+                            ),
+                        );
                         var
                     }
                 };

@@ -9,7 +9,13 @@ pub enum CValue<'mx> {
     Scalar(&'mx i128),
     Local(usize),
     Global(usize),
-    Raw(&'mx str),
+    Func(&'mx str),
+}
+
+impl<'mx> CValue<'mx> {
+    pub fn is_func(&self) -> bool {
+        matches!(self, CValue::Func(_))
+    }
 }
 
 pub type CExpr<'mx> = &'mx CExprKind<'mx>;
@@ -22,9 +28,9 @@ pub enum CExprKind<'mx> {
     Binary { lhs: CExpr<'mx>, rhs: CExpr<'mx>, op: &'static str },
     Index { expr: CExpr<'mx>, index: CExpr<'mx> },
     Cast { ty: CTy<'mx>, expr: CExpr<'mx> },
-    Call { callee: CExpr<'mx>, args: Vec<CExpr<'mx>> },
+    Call { callee: CExpr<'mx>, args: Box<[CExpr<'mx>]> },
     Member { expr: CExpr<'mx>, arrow: bool, field: &'mx str },
-    InitList { exprs: Vec<CExpr<'mx>> },
+    InitList { exprs: Box<[CExpr<'mx>]> },
 }
 
 impl<'mx> ModuleCtxt<'mx> {
@@ -34,8 +40,8 @@ impl<'mx> ModuleCtxt<'mx> {
         var
     }
 
-    pub fn raw_var(&self, name: &'mx str) -> CValue<'mx> {
-        CValue::Raw(name)
+    pub fn func(&self, name: &'mx str) -> CValue<'mx> {
+        CValue::Func(name)
     }
 
     fn create_expr(&self, expr: CExprKind<'mx>) -> CExpr<'mx> {
@@ -74,16 +80,16 @@ impl<'mx> ModuleCtxt<'mx> {
         self.create_expr(CExprKind::Cast { ty, expr })
     }
 
-    pub fn call(&self, callee: CExpr<'mx>, args: Vec<CExpr<'mx>>) -> CExpr<'mx> {
-        self.create_expr(CExprKind::Call { callee, args })
+    pub fn call(&self, callee: CExpr<'mx>, args: impl Into<Box<[CExpr<'mx>]>>) -> CExpr<'mx> {
+        self.create_expr(CExprKind::Call { callee, args: args.into() })
     }
 
     pub fn member(&self, expr: CExpr<'mx>, field: &'mx str) -> CExpr<'mx> {
         self.create_expr(CExprKind::Member { expr, field, arrow: false })
     }
 
-    pub fn init_list(&self, exprs: Vec<CExpr<'mx>>) -> CExpr<'mx> {
-        self.create_expr(CExprKind::InitList { exprs })
+    pub fn init_list(&self, exprs: impl Into<Box<[CExpr<'mx>]>>) -> CExpr<'mx> {
+        self.create_expr(CExprKind::InitList { exprs: exprs.into() })
     }
 }
 
@@ -94,7 +100,7 @@ impl Printer {
             CValue::Scalar(i) => self.word(i.to_string()),
             CValue::Local(i) => self.word(format!("_{}", i)),
             CValue::Global(i) => self.word(format!("_g{}", i)), // TODO: add module-specific prefix
-            CValue::Raw(raw) => self.word(raw.to_string()),
+            CValue::Func(raw) => self.word(raw.to_string()),
         }
     }
 

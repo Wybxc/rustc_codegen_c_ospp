@@ -3,7 +3,7 @@ use rustc_codegen_c_ast::r#type::CTy;
 use rustc_codegen_ssa::traits::LayoutTypeMethods;
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::Ty;
-use rustc_target::abi::call::FnAbi;
+use rustc_target::abi::call::{Conv, FnAbi};
 use rustc_type_ir::{IntTy, TyKind, UintTy};
 
 use crate::context::CodegenCx;
@@ -32,7 +32,13 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
             TyKind::Coroutine(_, _) => todo!(),
             TyKind::CoroutineWitness(_, _) => todo!(),
             TyKind::Never => self.mcx.void(),
-            TyKind::Tuple(_) => todo!(),
+            TyKind::Tuple(t) => {
+                if t.is_empty() {
+                    self.mcx.void()
+                } else {
+                    todo!()
+                }
+            }
             TyKind::Alias(_, _) => todo!(),
             TyKind::Param(_) => todo!(),
             TyKind::Bound(_, _) => todo!(),
@@ -53,7 +59,12 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn fn_decl_backend_type(&self, fn_abi: &FnAbi<'tcx, Ty<'tcx>>) -> Self::Type {
-        self.mcx.ptr(self.mcx.void()) // TODO
+        assert!(!fn_abi.c_variadic, "TODO: variadic parameters");
+        assert!(matches!(fn_abi.conv, Conv::C | Conv::Rust), "TODO: non-C ABI");
+
+        let ret_ty = self.get_cty(fn_abi.ret.layout.ty);
+        let args = fn_abi.args.iter().map(|arg| self.get_cty(arg.layout.ty)).collect();
+        self.mcx.fn_ptr(ret_ty, args)
     }
 
     fn fn_ptr_backend_type(&self, fn_abi: &FnAbi<'tcx, Ty<'tcx>>) -> Self::Type {

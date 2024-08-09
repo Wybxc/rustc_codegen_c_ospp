@@ -3,6 +3,7 @@
 use std::ops::Deref;
 
 use rustc_abi::{HasDataLayout, TargetDataLayout};
+use rustc_codegen_c_ast::expr::CValue;
 use rustc_codegen_c_ast::func::{CBasicBlock, CFunc};
 use rustc_codegen_c_ast::r#type::CTy;
 use rustc_codegen_ssa::common::{AtomicOrdering, IntPredicate, RealPredicate};
@@ -382,7 +383,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
             lhs.1,
             Some(mcx.call(
                 mcx.raw(op),
-                vec![mcx.value(lhs.0), mcx.value(rhs.0), mcx.unary("&", mcx.value(overflow))],
+                [mcx.value(lhs.0), mcx.value(rhs.0), mcx.unary("&", mcx.value(overflow))],
             )),
         )));
 
@@ -404,7 +405,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         self.bb.push_stmt(mcx.decl(mcx.var(
             buf,
             mcx.arr(mcx.char(), size.bytes_usize()),
-            Some(mcx.init_list(vec![mcx.value(mcx.scalar(0))])),
+            Some(mcx.init_list([mcx.value(mcx.scalar(0))])),
         )));
 
         let ret = self.func.0.next_local_var();
@@ -604,7 +605,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
             let cast = mcx.cast(CTy::Primitive(dest.to_unsigned()), mcx.value(val.0));
             mcx.call(
                 mcx.raw("__rust_utos"),
-                vec![
+                [
                     mcx.raw(dest.to_unsigned().to_str()),
                     mcx.raw(dest.to_str()),
                     cast,
@@ -807,11 +808,24 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         funclet: Option<&Self::Funclet>,
         instance: Option<Instance<'tcx>>,
     ) -> Self::Value {
+        assert!(llfn.0.is_func(), "calling a non-function: {:?}", llfn);
+
         let mcx = self.cx.mcx;
-        let ret = self.func.0.next_local_var();
-        let call = mcx.call(mcx.value(llfn.0), args.iter().map(|x| mcx.value(x.0)).collect());
-        self.bb.push_stmt(mcx.expr(call)); // TODO: ret value
-        (ret, llty)
+        let ret_ty = llty.ret_ty().expect("not a function type");
+
+        let call =
+            mcx.call(mcx.value(llfn.0), args.iter().map(|x| mcx.value(x.0)).collect::<Box<[_]>>());
+
+        let ret = if ret_ty.is_void() {
+            self.bb.push_stmt(mcx.expr(call));
+            CValue::Null
+        } else {
+            let ret = self.func.0.next_local_var();
+            self.bb.push_stmt(mcx.decl(mcx.var(ret, ret_ty, Some(call))));
+            ret
+        };
+
+        (ret, ret_ty)
     }
 
     fn zext(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {

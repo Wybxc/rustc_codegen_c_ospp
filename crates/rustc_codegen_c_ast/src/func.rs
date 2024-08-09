@@ -14,7 +14,7 @@ pub type CFunc<'mx> = Interned<'mx, CFuncKind<'mx>>;
 pub struct CFuncKind<'mx> {
     pub name: &'mx str,
     pub ty: CTy<'mx>,
-    pub params: Vec<(CTy<'mx>, CValue<'mx>)>,
+    pub params: Box<[(CTy<'mx>, CValue<'mx>)]>,
     pub body: RefCell<Vec<&'mx CBasicBlock<'mx>>>,
     local_var_counter: Cell<usize>,
 }
@@ -25,7 +25,7 @@ impl<'mx> CFuncKind<'mx> {
             .into_iter()
             .enumerate()
             .map(|(i, ty)| (ty, CValue::Local(i)))
-            .collect::<Vec<_>>();
+            .collect::<Box<[_]>>();
         let local_var_counter = Cell::new(params.len());
 
         Self { name, ty, params, body: RefCell::new(Vec::new()), local_var_counter }

@@ -1,8 +1,10 @@
+use std::collections::VecDeque;
+
 use rustc_data_structures::intern::Interned;
 use rustc_type_ir::{IntTy, UintTy};
 
 use crate::expr::CValue;
-use crate::pretty::Printer;
+use crate::pretty::{Printer, INDENT};
 use crate::ModuleCtxt;
 
 /// C types.
@@ -10,6 +12,23 @@ use crate::ModuleCtxt;
 pub enum CTy<'mx> {
     Primitive(CPTy),
     Ref(Interned<'mx, CTyKind<'mx>>),
+}
+
+impl<'mx> CTy<'mx> {
+    /// Whether the type is void.
+    pub fn is_void(&self) -> bool {
+        matches!(self, CTy::Primitive(CPTy::Void))
+    }
+
+    /// Get the return type of the function pointer.
+    pub fn ret_ty(&self) -> Option<CTy<'mx>> {
+        if let CTy::Ref(ty) = self {
+            if let CTyKind::FnPtr(ret, _) = ty.0 {
+                return Some(*ret);
+            }
+        }
+        None
+    }
 }
 
 /// C primitive types.
@@ -101,15 +120,7 @@ pub enum CTyKind<'mx> {
     Pointer(CTy<'mx>),
     // Record(String),
     Array(CTy<'mx>, usize),
-}
-
-impl<'mx> CTyKind<'mx> {
-    pub fn base(&self) -> CTy<'mx> {
-        match self {
-            CTyKind::Pointer(ty) => *ty,
-            CTyKind::Array(ty, _) => *ty,
-        }
-    }
+    FnPtr(CTy<'mx>, Box<[CTy<'mx>]>),
 }
 
 impl<'mx> ModuleCtxt<'mx> {
@@ -161,30 +172,69 @@ impl<'mx> ModuleCtxt<'mx> {
     pub fn arr(&self, ty: CTy<'mx>, n: usize) -> CTy<'mx> {
         self.intern_ty(CTyKind::Array(ty, n))
     }
+
+    /// Get the function type
+    pub fn fn_ptr(&self, ret: CTy<'mx>, args: Box<[CTy<'mx>]>) -> CTy<'mx> {
+        self.intern_ty(CTyKind::FnPtr(ret, args))
+    }
 }
 
 impl Printer {
     pub fn print_ty_decl(&mut self, mut ty: CTy, val: Option<CValue>) {
-        let mut prefix = String::new();
-        let mut postfix = String::new();
+        enum TyDeclPart<'mx> {
+            Ident(Option<CValue<'mx>>),
+            Ptr,
+            Array(usize),
+            FnArgs(Box<[CTy<'mx>]>),
+            LParen,
+            RParen,
+        }
+
+        impl<'mx> TyDeclPart<'mx> {
+            fn print(&self, printer: &mut Printer) {
+                match self {
+                    TyDeclPart::Ident(val) => {
+                        if let &Some(val) = val {
+                            printer.print_value(val);
+                        }
+                    }
+                    TyDeclPart::Ptr => printer.word("*"),
+                    TyDeclPart::Array(n) => printer.word(format!("[{}]", n)),
+                    TyDeclPart::FnArgs(args) => printer.ibox_delim(INDENT, ("(", ")"), |p| {
+                        p.seperated(",", args, |p, arg| p.print_ty_decl(*arg, None))
+                    }),
+                    TyDeclPart::LParen => printer.word("("),
+                    TyDeclPart::RParen => printer.word(")"),
+                }
+            }
+        }
+
+        let mut decl_parts = VecDeque::new();
+        decl_parts.push_front(TyDeclPart::Ident(val));
         while let CTy::Ref(kind) = ty {
             match kind.0 {
-                CTyKind::Pointer(_) => prefix += "*",
-                CTyKind::Array(_, n) => postfix += &format!("[{}]", n),
+                CTyKind::Pointer(_) => decl_parts.push_front(TyDeclPart::Ptr),
+                CTyKind::Array(_, n) => decl_parts.push_back(TyDeclPart::Array(*n)),
+                CTyKind::FnPtr(_, args) => {
+                    decl_parts.push_front(TyDeclPart::LParen);
+                    decl_parts.push_front(TyDeclPart::RParen);
+                    decl_parts.push_back(TyDeclPart::FnArgs(args.clone()));
+                }
             }
-            ty = kind.0.base();
+            ty = match kind.0 {
+                CTyKind::Pointer(ty) => *ty,
+                CTyKind::Array(ty, _) => *ty,
+                CTyKind::FnPtr(ty, _) => *ty,
+            };
         }
 
         let CTy::Primitive(ty) = ty else { unreachable!() };
         self.word(ty.to_str());
-        if let Some(val) = val {
+        if val.is_some() {
             self.nbsp();
-            self.word(prefix);
-            self.print_value(val);
-            self.word(postfix);
-        } else {
-            self.word(prefix);
-            self.word(postfix);
+        }
+        for part in decl_parts {
+            part.print(self);
         }
     }
 }

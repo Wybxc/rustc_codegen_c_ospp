@@ -20,7 +20,7 @@ impl<'tcx, 'mx> MiscMethods<'tcx> for CodegenCx<'tcx, 'mx> {
 
     fn get_fn_addr(&self, instance: Instance<'tcx>) -> Self::Value {
         let func_name = self.mcx.alloc_str(self.tcx.symbol_name(instance).name);
-        let val = self.mcx.raw_var(func_name); // TODO: mangling
+        let val = self.mcx.func(func_name); // TODO: mangling
         let ty = self.mcx.ptr(self.mcx.void());
         (val, ty)
     }
