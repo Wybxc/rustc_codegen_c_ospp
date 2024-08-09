@@ -6,7 +6,7 @@ use crate::ModuleCtxt;
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum CValue<'mx> {
     Null,
-    Scalar(&'mx i128),
+    Scalar(i128),
     Local(usize),
     Global(usize),
     Func(&'mx str),
@@ -53,7 +53,7 @@ impl<'mx> ModuleCtxt<'mx> {
     }
 
     pub fn scalar(&self, scalar: i128) -> CValue<'mx> {
-        CValue::Scalar(self.arena().alloc(scalar))
+        CValue::Scalar(scalar)
     }
 
     pub fn value(&self, value: CValue<'mx>) -> CExpr<'mx> {

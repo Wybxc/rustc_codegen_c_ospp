@@ -1,5 +1,5 @@
 use rustc_codegen_c_ast::expr::CValue;
-use rustc_codegen_c_ast::r#type::{CTy, CTyKind};
+use rustc_codegen_c_ast::r#type::{CTyBase, CTyKind};
 use rustc_codegen_ssa::traits::ConstMethods;
 use rustc_const_eval::interpret::{ConstAllocation, GlobalAlloc, Scalar};
 use rustc_type_ir::UintTy;
@@ -8,9 +8,9 @@ use crate::context::CodegenCx;
 
 impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     fn const_null(&self, t: Self::Type) -> Self::Value {
-        match t {
-            CTy::Primitive(_) => todo!(),
-            CTy::Ref(tkd) => match tkd.0 {
+        match t.base {
+            CTyBase::Primitive(_) => todo!(),
+            CTyBase::Ref(tkd) => match tkd.0 {
                 CTyKind::Pointer(_) => (CValue::Null, t),
                 _ => todo!(),
             },
@@ -124,7 +124,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
                         mcx.module().push_decl(
                             mcx.var(
                                 var,
-                                mcx.arr(mcx.char(), alloc.len()),
+                                mcx.arr(mcx.char().to_const(), alloc.len()),
                                 Some(
                                     mcx.init_list(
                                         bytes

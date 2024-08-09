@@ -5,7 +5,7 @@ use std::ops::Deref;
 use rustc_abi::{HasDataLayout, TargetDataLayout};
 use rustc_codegen_c_ast::expr::CValue;
 use rustc_codegen_c_ast::func::{CBasicBlock, CFunc};
-use rustc_codegen_c_ast::r#type::CTy;
+use rustc_codegen_c_ast::r#type::{CTy, CTyBase};
 use rustc_codegen_ssa::common::{AtomicOrdering, IntPredicate, RealPredicate};
 use rustc_codegen_ssa::mir::operand::OperandRef;
 use rustc_codegen_ssa::mir::place::PlaceRef;
@@ -599,10 +599,10 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         let mcx = self.cx.mcx;
         let ret = self.func.0.next_local_var();
 
-        let dest = if let CTy::Primitive(ty) = dest_ty { ty } else { unreachable!() };
+        let dest = if let CTyBase::Primitive(ty) = dest_ty.base { ty } else { unreachable!() };
 
         let cast = if dest.is_signed() {
-            let cast = mcx.cast(CTy::Primitive(dest.to_unsigned()), mcx.value(val.0));
+            let cast = mcx.cast(CTy::primitive(dest.to_unsigned()), mcx.value(val.0));
             mcx.call(
                 mcx.raw("__rust_utos"),
                 [
@@ -613,7 +613,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
                 ],
             )
         } else {
-            mcx.cast(CTy::Primitive(dest), mcx.value(val.0))
+            mcx.cast(CTy::primitive(dest), mcx.value(val.0))
         };
         self.bb.push_stmt(mcx.decl(mcx.var(ret, dest_ty, Some(cast))));
         (ret, dest_ty)

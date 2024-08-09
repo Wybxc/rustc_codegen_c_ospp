@@ -3,8 +3,9 @@
 use std::cell::Cell;
 use std::fmt::{self, Display};
 
-use crate::r#type::{CTy, CTyKind};
+use crate::r#type::{CTyBase, CTyKind};
 
+extern crate bitflags;
 extern crate rustc_arena;
 extern crate rustc_ast_pretty;
 extern crate rustc_data_structures;
@@ -37,7 +38,7 @@ impl<'mx> ModuleCtxt<'mx> {
         self.arena().alloc_str(s)
     }
 
-    pub fn intern_ty(&self, ty: CTyKind<'mx>) -> CTy<'mx> {
+    pub fn intern_ty(&self, ty: CTyKind<'mx>) -> CTyBase<'mx> {
         self.0.interner.intern_ty(self.arena(), ty)
     }
 }

@@ -7,21 +7,21 @@ use rustc_data_structures::stable_hasher::StableHasher;
 use rustc_hash::FxHashMap;
 
 use crate::arena::Arena;
-use crate::r#type::{CTy, CTyKind};
+use crate::r#type::{CTyBase, CTyKind};
 
 #[derive(Default)]
 pub struct Interner<'mx> {
-    ty: RefCell<FxHashMap<Fingerprint, CTy<'mx>>>,
+    ty: RefCell<FxHashMap<Fingerprint, CTyBase<'mx>>>,
 }
 
 impl<'mx> Interner<'mx> {
-    pub fn intern_ty(&self, arena: &'mx Arena<'mx>, ty: CTyKind<'mx>) -> CTy<'mx> {
+    pub fn intern_ty(&self, arena: &'mx Arena<'mx>, ty: CTyKind<'mx>) -> CTyBase<'mx> {
         let fingerprint = fingerprint(&ty);
         *self
             .ty
             .borrow_mut()
             .entry(fingerprint)
-            .or_insert_with(|| CTy::Ref(Interned::new_unchecked(arena.alloc(ty))))
+            .or_insert_with(|| CTyBase::Ref(Interned::new_unchecked(arena.alloc(ty))))
     }
 }
 

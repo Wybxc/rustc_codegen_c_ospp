@@ -7,27 +7,65 @@ use crate::expr::CValue;
 use crate::pretty::{Printer, INDENT};
 use crate::ModuleCtxt;
 
-/// C types.
+/// C types with qualifiers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum CTy<'mx> {
-    Primitive(CPTy),
-    Ref(Interned<'mx, CTyKind<'mx>>),
+pub struct CTy<'mx> {
+    pub base: CTyBase<'mx>,
+    pub quals: CTyQuals,
 }
 
 impl<'mx> CTy<'mx> {
+    pub fn primitive(ty: CPTy) -> Self {
+        Self { base: CTyBase::Primitive(ty), quals: CTyQuals::empty() }
+    }
+
     /// Whether the type is void.
-    pub fn is_void(&self) -> bool {
-        matches!(self, CTy::Primitive(CPTy::Void))
+    pub fn is_void(self) -> bool {
+        matches!(self.base, CTyBase::Primitive(CPTy::Void))
     }
 
     /// Get the return type of the function pointer.
-    pub fn ret_ty(&self) -> Option<CTy<'mx>> {
-        if let CTy::Ref(ty) = self {
+    pub fn ret_ty(self) -> Option<CTy<'mx>> {
+        if let CTyBase::Ref(ty) = self.base {
             if let CTyKind::FnPtr(ret, _) = ty.0 {
                 return Some(*ret);
             }
         }
         None
+    }
+
+    pub fn to_const(self) -> Self {
+        Self { base: self.base, quals: self.quals | CTyQuals::CONST }
+    }
+
+    pub fn to_volatile(self) -> Self {
+        Self { base: self.base, quals: self.quals | CTyQuals::VOLATILE }
+    }
+
+    pub fn to_restrict(self) -> Self {
+        Self { base: self.base, quals: self.quals | CTyQuals::RESTRICT }
+    }
+}
+
+impl<'mx> From<CTyBase<'mx>> for CTy<'mx> {
+    fn from(base: CTyBase<'mx>) -> Self {
+        CTy { base, quals: CTyQuals::empty() }
+    }
+}
+
+/// C types.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CTyBase<'mx> {
+    Primitive(CPTy),
+    Ref(Interned<'mx, CTyKind<'mx>>),
+}
+
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct CTyQuals: u8 {
+        const CONST = 1;
+        const VOLATILE = 2;
+        const RESTRICT = 4;
     }
 }
 
@@ -126,56 +164,58 @@ pub enum CTyKind<'mx> {
 impl<'mx> ModuleCtxt<'mx> {
     /// Get the void type
     pub const fn void(&self) -> CTy<'mx> {
-        CTy::Primitive(CPTy::Void)
+        CTy { base: CTyBase::Primitive(CPTy::Void), quals: CTyQuals::empty() }
     }
 
     /// Get the bool type
     pub const fn bool(&self) -> CTy<'mx> {
-        CTy::Primitive(CPTy::Bool)
+        CTy { base: CTyBase::Primitive(CPTy::U8), quals: CTyQuals::empty() }
     }
 
     /// Get the char type
     pub const fn char(&self) -> CTy<'mx> {
-        CTy::Primitive(CPTy::Char)
+        CTy { base: CTyBase::Primitive(CPTy::Char), quals: CTyQuals::empty() }
     }
 
     /// Get the type of an signed integer
     pub fn int(&self, int: IntTy) -> CTy<'mx> {
         match int {
-            IntTy::Isize => CTy::Primitive(CPTy::Isize),
-            IntTy::I8 => CTy::Primitive(CPTy::I8),
-            IntTy::I16 => CTy::Primitive(CPTy::I16),
-            IntTy::I32 => CTy::Primitive(CPTy::I32),
-            IntTy::I64 => CTy::Primitive(CPTy::I64),
+            IntTy::Isize => CTyBase::Primitive(CPTy::Isize),
+            IntTy::I8 => CTyBase::Primitive(CPTy::I8),
+            IntTy::I16 => CTyBase::Primitive(CPTy::I16),
+            IntTy::I32 => CTyBase::Primitive(CPTy::I32),
+            IntTy::I64 => CTyBase::Primitive(CPTy::I64),
             IntTy::I128 => unimplemented!("i128 not supported yet"),
         }
+        .into()
     }
 
     /// Get the type of an unsigned integer
     pub fn uint(&self, uint: UintTy) -> CTy<'mx> {
         match uint {
-            UintTy::Usize => CTy::Primitive(CPTy::Usize),
-            UintTy::U8 => CTy::Primitive(CPTy::U8),
-            UintTy::U16 => CTy::Primitive(CPTy::U16),
-            UintTy::U32 => CTy::Primitive(CPTy::U32),
-            UintTy::U64 => CTy::Primitive(CPTy::U64),
+            UintTy::Usize => CTyBase::Primitive(CPTy::Usize),
+            UintTy::U8 => CTyBase::Primitive(CPTy::U8),
+            UintTy::U16 => CTyBase::Primitive(CPTy::U16),
+            UintTy::U32 => CTyBase::Primitive(CPTy::U32),
+            UintTy::U64 => CTyBase::Primitive(CPTy::U64),
             UintTy::U128 => unimplemented!("u128 not supported yet"),
         }
+        .into()
     }
 
     /// Get the pointer type
     pub fn ptr(&self, ty: CTy<'mx>) -> CTy<'mx> {
-        self.intern_ty(CTyKind::Pointer(ty))
+        self.intern_ty(CTyKind::Pointer(ty)).into()
     }
 
     /// Get the array type
     pub fn arr(&self, ty: CTy<'mx>, n: usize) -> CTy<'mx> {
-        self.intern_ty(CTyKind::Array(ty, n))
+        self.intern_ty(CTyKind::Array(ty, n)).into()
     }
 
     /// Get the function type
     pub fn fn_ptr(&self, ret: CTy<'mx>, args: Box<[CTy<'mx>]>) -> CTy<'mx> {
-        self.intern_ty(CTyKind::FnPtr(ret, args))
+        self.intern_ty(CTyKind::FnPtr(ret, args)).into()
     }
 }
 
@@ -183,8 +223,8 @@ impl Printer {
     pub fn print_ty_decl(&mut self, mut ty: CTy, val: Option<CValue>) {
         enum TyDeclPart<'mx> {
             Ident(Option<CValue<'mx>>),
-            Ptr,
-            Array(usize),
+            Ptr(CTyQuals),
+            Array(usize, CTyQuals),
             FnArgs(Box<[CTy<'mx>]>),
             LParen,
             RParen,
@@ -198,8 +238,16 @@ impl Printer {
                             printer.print_value(val);
                         }
                     }
-                    TyDeclPart::Ptr => printer.word("*"),
-                    TyDeclPart::Array(n) => printer.word(format!("[{}]", n)),
+                    TyDeclPart::Ptr(quals) => {
+                        printer.word("*");
+                        printer.print_ty_quals(*quals);
+                    }
+                    TyDeclPart::Array(n, quals) => {
+                        printer.word("[");
+                        printer.print_ty_quals(*quals);
+                        printer.word(format!("{}", n));
+                        printer.word("]");
+                    }
                     TyDeclPart::FnArgs(args) => printer.ibox_delim(INDENT, ("(", ")"), |p| {
                         p.seperated(",", args, |p, arg| p.print_ty_decl(*arg, None))
                     }),
@@ -211,10 +259,10 @@ impl Printer {
 
         let mut decl_parts = VecDeque::new();
         decl_parts.push_front(TyDeclPart::Ident(val));
-        while let CTy::Ref(kind) = ty {
+        while let CTyBase::Ref(kind) = ty.base {
             match kind.0 {
-                CTyKind::Pointer(_) => decl_parts.push_front(TyDeclPart::Ptr),
-                CTyKind::Array(_, n) => decl_parts.push_back(TyDeclPart::Array(*n)),
+                CTyKind::Pointer(_) => decl_parts.push_front(TyDeclPart::Ptr(ty.quals)),
+                CTyKind::Array(_, n) => decl_parts.push_back(TyDeclPart::Array(*n, ty.quals)),
                 CTyKind::FnPtr(_, args) => {
                     decl_parts.push_front(TyDeclPart::LParen);
                     decl_parts.push_front(TyDeclPart::RParen);
@@ -228,13 +276,29 @@ impl Printer {
             };
         }
 
-        let CTy::Primitive(ty) = ty else { unreachable!() };
-        self.word(ty.to_str());
+        let CTyBase::Primitive(base) = ty.base else { unreachable!() };
+        self.print_ty_quals(ty.quals);
+        self.word(base.to_str());
         if val.is_some() {
             self.nbsp();
         }
         for part in decl_parts {
             part.print(self);
+        }
+    }
+
+    fn print_ty_quals(&mut self, quals: CTyQuals) {
+        if quals.contains(CTyQuals::CONST) {
+            self.word("const");
+            self.softbreak();
+        }
+        if quals.contains(CTyQuals::VOLATILE) {
+            self.word("volatile");
+            self.softbreak();
+        }
+        if quals.contains(CTyQuals::RESTRICT) {
+            self.word("restrict");
+            self.softbreak();
         }
     }
 }
