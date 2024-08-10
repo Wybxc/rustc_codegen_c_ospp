@@ -9,9 +9,6 @@ use rustc_middle::ty::TyCtxt;
 use crate::builder::Builder;
 use crate::context::CodegenCx;
 
-/// Needed helper functions
-const HELPER: &str = include_str!("./helper.h");
-
 // note: parallel
 // it seems this function will be invoked parallelly (if parallel codegen is enabled)
 
@@ -42,8 +39,19 @@ pub fn compile_codegen_unit(
 fn module_codegen(tcx: TyCtxt<'_>, cgu_name: rustc_span::Symbol) -> ModuleCodegen<String> {
     let cgu = tcx.codegen_unit(cgu_name);
 
-    let mcx = ModuleArena::new(HELPER);
+    let mcx = ModuleArena::new();
     let mcx = ModuleCtxt(&mcx);
+
+    mcx.module().push_includes(&[
+        "stdlib.h",
+        "stdio.h",
+        "stdint.h",
+        "stddef.h",
+        "stdbool.h",
+        "rust/prelude.h",
+        "rust/checked.h",
+    ]);
+
     let cx = CodegenCx::new(tcx, mcx);
 
     let mono_items = cgu.items_in_deterministic_order(tcx);

@@ -7,16 +7,14 @@ use crate::pretty::Printer;
 #[derive(Debug, Clone)]
 pub struct Module<'mx> {
     pub includes: RefCell<Vec<&'static str>>,
-    pub helper: &'static str,
     pub decls: RefCell<Vec<CDecl<'mx>>>,
     pub funcs: RefCell<Vec<CFunc<'mx>>>,
 }
 
 impl<'mx> Module<'mx> {
-    pub fn new(helper: &'static str) -> Self {
+    pub fn new() -> Self {
         Self {
             includes: RefCell::new(Vec::new()),
-            helper,
             decls: RefCell::new(Vec::new()),
             funcs: RefCell::new(Vec::new()),
         }
@@ -35,6 +33,12 @@ impl<'mx> Module<'mx> {
     }
 }
 
+impl<'mx> Default for Module<'mx> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Printer {
     pub fn print_module(&mut self, module: &Module) {
         self.cbox(0, |this| {
@@ -46,12 +50,7 @@ impl Printer {
             }
 
             this.hardbreak();
-
-            this.word(module.helper);
-
-            this.hardbreak();
             this.word("/* rustc_codegen_c: interface */");
-            this.hardbreak();
 
             for &decl in module.decls.borrow().iter() {
                 this.hardbreak();

@@ -59,12 +59,18 @@ pub struct ModuleArena<'mx> {
 }
 
 impl<'mx> ModuleArena<'mx> {
-    pub fn new(helper: &'static str) -> Self {
+    pub fn new() -> Self {
         Self {
             arena: arena::Arena::default(),
-            module: module::Module::new(helper),
+            module: module::Module::new(),
             interner: intern::Interner::default(),
             global_var_counter: Cell::new(0),
         }
+    }
+}
+
+impl<'mx> Default for ModuleArena<'mx> {
+    fn default() -> Self {
+        Self::new()
     }
 }

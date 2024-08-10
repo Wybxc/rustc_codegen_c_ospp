@@ -9,7 +9,10 @@ use rustc_errors::{DiagCtxtHandle, FatalError};
 use rustc_session::config::OutputType;
 use tracing::error;
 
-// use crate::module::String;
+const HEADERS: &[(&str, &str)] = &[
+    ("prelude.h", include_str!("./headers/prelude.h")),
+    ("checked.h", include_str!("./headers/checked.h")),
+];
 
 pub(crate) unsafe fn codegen(
     cgcx: &CodegenContext<crate::CCodegen>,
@@ -22,6 +25,15 @@ pub(crate) unsafe fn codegen(
     let obj_out = cgcx.output_filenames.temp_path(OutputType::Object, module_name);
     let c_out = obj_out.with_extension("c");
 
+    // extract headers
+    let headers_base = obj_out.parent().unwrap().join("lib");
+    let headers_dir = headers_base.join("rust");
+    fs::create_dir_all(&headers_dir).map_err(|_| FatalError)?;
+    for &(header, contents) in HEADERS {
+        let header_path = headers_dir.join(header);
+        fs::write(&header_path, contents).map_err(|_| FatalError)?;
+    }
+
     // output c source code
     let c_out_file = fs::File::create(&c_out).map_err(|_| FatalError)?;
     writeln!(&c_out_file, "// file: {}.c", module.name).map_err(|_| FatalError)?;
@@ -32,7 +44,7 @@ pub(crate) unsafe fn codegen(
     // TODO: handle long command line (windows)
     // TODO: flush_linked_file (windows)
     let mut cmd = Command::new("clang");
-    cmd.arg(&c_out).arg("-o").arg(&obj_out).arg("-c");
+    cmd.arg(&c_out).arg("-o").arg(&obj_out).arg("-c").arg(format!("-I{}", headers_base.display()));
     let mut cmd = cmd.command();
     let output = match cmd
         .stdout(Stdio::piped())
