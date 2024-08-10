@@ -1,5 +1,7 @@
+use std::sync::Arc;
 use std::time::Instant;
 
+use parking_lot::RwLock;
 use rustc_codegen_c_ast::{ModuleArena, ModuleCtxt};
 use rustc_codegen_ssa::mono_item::MonoItemExt;
 use rustc_codegen_ssa::{ModuleCodegen, ModuleKind};
@@ -8,6 +10,7 @@ use rustc_middle::ty::TyCtxt;
 
 use crate::builder::Builder;
 use crate::context::CodegenCx;
+use crate::{BackendConfig, CodegenModule};
 
 // note: parallel
 // it seems this function will be invoked parallelly (if parallel codegen is enabled)
@@ -15,7 +18,8 @@ use crate::context::CodegenCx;
 pub fn compile_codegen_unit(
     tcx: TyCtxt<'_>,
     cgu_name: rustc_span::Symbol,
-) -> (ModuleCodegen<String>, u64) {
+    config: Arc<RwLock<BackendConfig>>,
+) -> (ModuleCodegen<CodegenModule>, u64) {
     let start_time = Instant::now();
 
     let dep_node = tcx.codegen_unit(cgu_name).codegen_dep_node(tcx);
@@ -33,6 +37,11 @@ pub fn compile_codegen_unit(
         .saturating_mul(1_000_000_000)
         .saturating_add(time_to_codegen.subsec_nanos() as u64);
 
+    let module = ModuleCodegen {
+        name: module.name,
+        module_llvm: CodegenModule { module_source: module.module_llvm, config },
+        kind: ModuleKind::Regular,
+    };
     (module, cost)
 }
 
@@ -47,8 +56,7 @@ fn module_codegen(tcx: TyCtxt<'_>, cgu_name: rustc_span::Symbol) -> ModuleCodege
         "stdint.h",
         "stddef.h",
         "stdbool.h",
-        "rust/prelude.h",
-        "rust/checked.h",
+        "rust_runtime.h",
     ]);
 
     let cx = CodegenCx::new(tcx, mcx);

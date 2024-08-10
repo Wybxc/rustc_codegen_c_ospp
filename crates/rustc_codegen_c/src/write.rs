@@ -9,15 +9,12 @@ use rustc_errors::{DiagCtxtHandle, FatalError};
 use rustc_session::config::OutputType;
 use tracing::error;
 
-const HEADERS: &[(&str, &str)] = &[
-    ("prelude.h", include_str!("./headers/prelude.h")),
-    ("checked.h", include_str!("./headers/checked.h")),
-];
+use crate::CodegenModule;
 
 pub(crate) unsafe fn codegen(
     cgcx: &CodegenContext<crate::CCodegen>,
     _dcx: DiagCtxtHandle<'_>,
-    module: ModuleCodegen<String>,
+    module: ModuleCodegen<CodegenModule>,
     _config: &ModuleConfig,
 ) -> Result<CompiledModule, FatalError> {
     let module_name = module.name.clone();
@@ -25,27 +22,20 @@ pub(crate) unsafe fn codegen(
     let obj_out = cgcx.output_filenames.temp_path(OutputType::Object, module_name);
     let c_out = obj_out.with_extension("c");
 
-    // extract headers
-    let headers_base = obj_out.parent().unwrap().join("lib");
-    let headers_dir = headers_base.join("rust");
-    fs::create_dir_all(&headers_dir).map_err(|_| FatalError)?;
-    for &(header, contents) in HEADERS {
-        let header_path = headers_dir.join(header);
-        fs::write(&header_path, contents).map_err(|_| FatalError)?;
-    }
+    let config = module.module_llvm.config.read();
 
     // output c source code
     let c_out_file = fs::File::create(&c_out).map_err(|_| FatalError)?;
     writeln!(&c_out_file, "// file: {}.c", module.name).map_err(|_| FatalError)?;
-    write!(&c_out_file, "{}", module.module_llvm).map_err(|_| FatalError)?;
+    write!(&c_out_file, "{}", module.module_llvm.module_source).map_err(|_| FatalError)?;
 
     // invoke cc to compile
-    // TODO: configure cc
     // TODO: handle long command line (windows)
     // TODO: flush_linked_file (windows)
-    let mut cmd = Command::new("clang");
-    cmd.arg(&c_out).arg("-o").arg(&obj_out).arg("-c").arg(format!("-I{}", headers_base.display()));
+    let mut cmd = Command::new(config.cc.clone());
+    cmd.arg(&c_out).arg("-o").arg(&obj_out).arg("-c").args(&config.cflags);
     let mut cmd = cmd.command();
+
     let output = match cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -68,13 +58,15 @@ pub(crate) unsafe fn codegen(
         return Err(FatalError);
     }
 
+    drop(config);
+
     Ok(module.into_compiled_module(true, false, false, false, false, &cgcx.output_filenames))
 }
 
 pub(crate) fn link(
     _cgcx: &CodegenContext<crate::CCodegen>,
     _dcx: DiagCtxtHandle<'_>,
-    mut _modules: Vec<ModuleCodegen<String>>,
-) -> Result<ModuleCodegen<String>, FatalError> {
+    mut _modules: Vec<ModuleCodegen<CodegenModule>>,
+) -> Result<ModuleCodegen<CodegenModule>, FatalError> {
     unimplemented!();
 }

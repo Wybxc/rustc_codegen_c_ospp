@@ -1,8 +1,4 @@
-#ifndef __RUST_CHECKED_H
-#define __RUST_CHECKED_H
-
-#include <stdbool.h>
-#include <stdint.h>
+#include "rust_runtime.h"
 
 bool __rust_ckd_add_i8(int8_t x, int8_t y, int8_t *result) {
   if ((x > 0 && y > INT8_MAX - x) || (x < 0 && y < INT8_MIN - x))
@@ -387,5 +383,3 @@ bool __rust_ckd_rem_uintptr(uintptr_t x, uintptr_t y, uintptr_t *result) {
   *result = x % y;
   return false;
 }
-
-#endif

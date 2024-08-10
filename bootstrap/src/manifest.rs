@@ -24,6 +24,25 @@ impl Manifest {
         log::debug!("running {:?}", command);
         command.status().unwrap();
 
+        cprintln!("<b>[BUILD]</b> librust_runtime");
+        std::fs::create_dir_all(&self.out_dir).unwrap();
+        let cc = std::env::var("CC").unwrap_or("clang".to_string());
+        let mut command = Command::new(&cc);
+        command
+            .arg("rust_runtime/rust_runtime.c")
+            .arg("-o")
+            .arg(self.out_dir.join("rust_runtime.o"))
+            .arg("-c");
+        log::debug!("running {:?}", command);
+        command.status().unwrap();
+        let mut command = Command::new("ar");
+        command
+            .arg("rcs")
+            .arg(self.out_dir.join("librust_runtime.a"))
+            .arg(self.out_dir.join("rust_runtime.o"));
+        log::debug!("running {:?}", command);
+        command.status().unwrap();
+
         cprintln!("<b>[BUILD]</b> mini_core");
         let mut command = self.rustc();
         command
@@ -53,7 +72,9 @@ impl Manifest {
             .arg(format!("codegen-backend={}", self.codegen_backend().display()))
             .args(["-C", "panic=abort"])
             .args(["-C", "lto=false"])
-            .arg(format!("-Lall={}", self.out_dir.display()));
+            .arg(format!("-Lall={}", self.out_dir.display()))
+            .env("CFLAGS", "-Irust_runtime")
+            .arg("-lrust_runtime");
         if self.debug {
             command.env("RUST_BACKTRACE", "full");
         }

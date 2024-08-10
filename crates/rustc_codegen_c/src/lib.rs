@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 
+extern crate parking_lot;
 extern crate rustc_abi;
 extern crate rustc_ast;
 extern crate rustc_codegen_ssa;
@@ -18,8 +19,11 @@ extern crate rustc_target;
 extern crate rustc_type_ir;
 extern crate tracing;
 
+use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use parking_lot::RwLock;
 use rustc_ast::expand::allocator::AllocatorKind;
 use rustc_codegen_ssa::back::link::link_binary;
 use rustc_codegen_ssa::back::lto::{LtoModuleCodegen, SerializedModule, ThinModule};
@@ -41,6 +45,7 @@ use rustc_middle::util::Providers;
 use rustc_session::config::{OptLevel, OutputFilenames};
 use rustc_session::Session;
 use rustc_span::ErrorGuaranteed;
+use tracing::warn;
 
 mod archive;
 mod base;
@@ -50,12 +55,64 @@ mod write;
 
 rustc_fluent_macro::fluent_messages! { "../messages.ftl" }
 
+/// Configuration for the C backend
+///
+/// Configuration can be set through `-Cllvm-args`, or from environment variables.
+#[derive(Clone, Debug)]
+pub struct BackendConfig {
+    /// The C compiler to use. Environment variable: `CC`.
+    pub cc: PathBuf,
+    /// Additional flags to pass to the C compiler. Environment variable: `CFLAGS`.
+    pub cflags: Vec<String>,
+}
+
+impl Default for BackendConfig {
+    fn default() -> Self {
+        BackendConfig { cc: "clang".into(), cflags: vec![] }
+    }
+}
+
+impl BackendConfig {
+    /// Load configuration from environment variables or the command line
+    pub fn load_env(&mut self, opts: &[String]) {
+        if let Ok(cc) = env::var("CC") {
+            self.cc = cc.into();
+        }
+        if let Ok(cflags) = env::var("CFLAGS") {
+            self.cflags = cflags.split(' ').map(String::from).collect();
+        }
+
+        for opt in opts {
+            if let Some((key, value)) = opt.split_once('=') {
+                match key {
+                    "cc" => self.cc = value.into(),
+                    "cflags" => self.cflags = value.split(' ').map(String::from).collect(),
+                    _ => warn!("unknown option `{}`", opt),
+                }
+            } else {
+                warn!("unknown option `{}`", opt);
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
-pub struct CCodegen {}
+pub struct CCodegen {
+    config: Arc<RwLock<BackendConfig>>,
+}
+
+pub struct CodegenModule {
+    pub module_source: String,
+    pub config: Arc<RwLock<BackendConfig>>,
+}
 
 impl CodegenBackend for CCodegen {
     fn locale_resource(&self) -> &'static str {
         crate::DEFAULT_LOCALE_RESOURCE
+    }
+
+    fn init(&self, sess: &Session) {
+        self.config.write().load_env(&sess.opts.cg.llvm_args)
     }
 
     fn provide(&self, providers: &mut Providers) {
@@ -110,7 +167,7 @@ impl ExtraBackendMethods for CCodegen {
         _kind: AllocatorKind,
         _alloc_error_handler_kind: AllocatorKind,
     ) -> Self::Module {
-        Default::default() // TODO
+        CodegenModule { module_source: Default::default(), config: self.config.clone() }
     }
 
     fn compile_codegen_unit(
@@ -118,7 +175,7 @@ impl ExtraBackendMethods for CCodegen {
         tcx: TyCtxt<'_>,
         cgu_name: rustc_span::Symbol,
     ) -> (ModuleCodegen<Self::Module>, u64) {
-        base::compile_codegen_unit(tcx, cgu_name)
+        base::compile_codegen_unit(tcx, cgu_name, self.config.clone())
     }
 
     fn target_machine_factory(
@@ -152,7 +209,7 @@ impl ThinBufferMethods for ThinBuffer {
 }
 
 impl WriteBackendMethods for CCodegen {
-    type Module = String;
+    type Module = CodegenModule;
     type TargetMachine = ();
     type TargetMachineError = ();
     type ModuleBuffer = ModuleBuffer;
@@ -247,5 +304,5 @@ pub fn __rustc_codegen_backend() -> Box<dyn CodegenBackend> {
     {
         color_backtrace::install();
     }
-    Box::new(CCodegen {})
+    Box::new(CCodegen { config: Arc::new(RwLock::new(BackendConfig::default())) })
 }
