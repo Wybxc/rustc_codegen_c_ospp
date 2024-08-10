@@ -30,12 +30,20 @@ mod type_membership;
 pub struct CodegenCx<'tcx, 'mx> {
     pub tcx: TyCtxt<'tcx>,
     pub mcx: ModuleCtxt<'mx>,
+    // function declarations (in another crate or extern)
+    pub function_declarations: RefCell<FxHashMap<Instance<'tcx>, (CValue<'mx>, CTy<'mx>)>>,
+    // function instances (in this crate)
     pub function_instances: RefCell<FxHashMap<Instance<'tcx>, CFunc<'mx>>>,
 }
 
 impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
     pub fn new(tcx: TyCtxt<'tcx>, mcx: ModuleCtxt<'mx>) -> Self {
-        Self { tcx, mcx, function_instances: RefCell::new(FxHashMap::default()) }
+        Self {
+            tcx,
+            mcx,
+            function_declarations: RefCell::new(FxHashMap::default()),
+            function_instances: RefCell::new(FxHashMap::default()),
+        }
     }
 }
 

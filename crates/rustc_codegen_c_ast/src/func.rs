@@ -4,7 +4,7 @@ use rustc_data_structures::intern::Interned;
 
 use crate::expr::CValue;
 use crate::pretty::{Printer, INDENT};
-use crate::r#type::CTy;
+use crate::r#type::{CFnPtr, CTy};
 use crate::stmt::CStmt;
 use crate::ModuleCtxt;
 
@@ -14,20 +14,16 @@ pub type CFunc<'mx> = Interned<'mx, CFuncKind<'mx>>;
 pub struct CFuncKind<'mx> {
     pub name: &'mx str,
     pub ty: CTy<'mx>,
-    pub params: Box<[(CTy<'mx>, CValue<'mx>)]>,
+    pub params: Box<[CValue<'mx>]>,
     pub body: RefCell<Vec<&'mx CBasicBlock<'mx>>>,
     local_var_counter: Cell<usize>,
 }
 
 impl<'mx> CFuncKind<'mx> {
-    pub fn new(name: &'mx str, ty: CTy<'mx>, params: impl IntoIterator<Item = CTy<'mx>>) -> Self {
-        let params = params
-            .into_iter()
-            .enumerate()
-            .map(|(i, ty)| (ty, CValue::Local(i)))
-            .collect::<Box<[_]>>();
-        let local_var_counter = Cell::new(params.len());
-
+    pub fn new(name: &'mx str, ty: CTy<'mx>) -> Self {
+        let fn_ptr = ty.fn_ptr().expect("expected a function pointer type");
+        let params = fn_ptr.args.iter().enumerate().map(|(i, _)| CValue::Local(i)).collect();
+        let local_var_counter = Cell::new(fn_ptr.args.len());
         Self { name, ty, params, body: RefCell::new(Vec::new()), local_var_counter }
     }
 
@@ -42,6 +38,10 @@ impl<'mx> CFuncKind<'mx> {
         let bb = mcx.create_bb(CBasicBlock::new(label));
         self.body.borrow_mut().push(bb);
         bb
+    }
+
+    pub fn fn_ptr(&self) -> &'mx CFnPtr<'mx> {
+        self.ty.fn_ptr().unwrap()
     }
 }
 
@@ -73,13 +73,15 @@ impl<'mx> ModuleCtxt<'mx> {
 
 impl Printer {
     pub fn print_func_decl(&mut self, func: CFunc) {
-        self.print_signature(func);
+        let fn_ptr = func.fn_ptr();
+        self.print_signature(fn_ptr.ret, func.0.name, &fn_ptr.args, Some(&func.0.params));
         self.word(";");
     }
 
     pub fn print_func(&mut self, func: CFunc) {
         self.ibox(0, |this| {
-            this.print_signature(func);
+            let fn_ptr = func.fn_ptr();
+            this.print_signature(fn_ptr.ret, func.0.name, &fn_ptr.args, Some(&func.0.params));
             this.softbreak();
             this.word("{");
             this.break_offset(0, 0);
@@ -93,16 +95,28 @@ impl Printer {
         })
     }
 
-    fn print_signature(&mut self, func: CFunc) {
+    pub fn print_signature(
+        &mut self,
+        ret_ty: CTy,
+        name: &str,
+        params: &[CTy],
+        param_names: Option<&[CValue]>,
+    ) {
         self.ibox(0, |this| {
-            this.print_ty_decl(func.0.ty, None);
+            this.print_ty_decl(ret_ty, None);
             this.softbreak();
-            this.word(func.0.name.to_string());
+            this.word(name.to_string());
 
             this.valign_delim(("(", ")"), |this| {
-                this.seperated(",", &func.0.params, |this, &(ty, name)| {
-                    this.print_ty_decl(ty, Some(name));
-                })
+                if let Some(param_names) = param_names {
+                    this.seperated(",", params.iter().zip(param_names), |this, (&ty, &name)| {
+                        this.print_ty_decl(ty, Some(name));
+                    })
+                } else {
+                    this.seperated(",", params, |this, &ty| {
+                        this.print_ty_decl(ty, None);
+                    })
+                }
             });
         });
     }

@@ -40,7 +40,7 @@ impl<'mx> ModuleCtxt<'mx> {
         var
     }
 
-    pub fn func(&self, name: &'mx str) -> CValue<'mx> {
+    pub fn fn_ref(&self, name: &'mx str) -> CValue<'mx> {
         CValue::Func(name)
     }
 

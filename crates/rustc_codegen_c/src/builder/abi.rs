@@ -1,4 +1,3 @@
-use rustc_codegen_c_ast::expr::CValue;
 use rustc_codegen_ssa::mir::place::PlaceRef;
 use rustc_codegen_ssa::traits::{AbiBuilderMethods, ArgAbiMethods};
 use rustc_middle::ty::Ty;
@@ -8,9 +7,9 @@ use crate::builder::Builder;
 
 impl<'tcx, 'mx> AbiBuilderMethods<'tcx> for Builder<'_, 'tcx, 'mx> {
     fn get_param(&mut self, index: usize) -> Self::Value {
-        // Params are first n variables in the function
-        let ty = self.func.params[index].0;
-        (CValue::Local(index), ty)
+        let val = self.func.params[index];
+        let ty = self.func.fn_ptr().args[index];
+        (val, ty)
     }
 }
 

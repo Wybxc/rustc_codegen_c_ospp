@@ -3,13 +3,21 @@ use rustc_codegen_c_ast::r#type::CTy;
 use rustc_codegen_ssa::traits::LayoutTypeMethods;
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::Ty;
-use rustc_target::abi::call::{Conv, FnAbi};
+use rustc_target::abi::call::{Conv, FnAbi, PassMode};
 use rustc_type_ir::{IntTy, TyKind, UintTy};
 
 use crate::context::CodegenCx;
 
 impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
-    fn get_cty(&self, ty: Ty<'tcx>) -> CTy<'mx> {
+    fn get_cty(&self, ty: Ty<'tcx>, abi: Conv) -> CTy<'mx> {
+        match abi {
+            Conv::C => self.get_cty_cabi(ty),
+            Conv::Rust => self.get_cty_rabi(ty),
+            _ => todo!(),
+        }
+    }
+
+    fn get_cty_rabi(&self, ty: Ty<'tcx>) -> CTy<'mx> {
         match ty.kind() {
             TyKind::Bool => self.mcx.bool(),
             TyKind::Char => self.mcx.int(IntTy::I32),
@@ -23,7 +31,13 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
             TyKind::Pat(_, _) => todo!(),
             TyKind::Slice(_) => todo!(),
             TyKind::RawPtr(_, _) => self.mcx.int(IntTy::Isize),
-            TyKind::Ref(_, ty, _) => self.mcx.ptr(self.get_cty(*ty)),
+            TyKind::Ref(_, ty, m) => {
+                let mut ty = self.mcx.ptr(self.get_cty_rabi(*ty));
+                if m.is_not() {
+                    ty = ty.to_const();
+                }
+                ty
+            }
             TyKind::FnDef(_, _) => todo!(),
             TyKind::FnPtr(_) => todo!(),
             TyKind::Dynamic(_, _, _) => todo!(),
@@ -47,11 +61,30 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
             TyKind::Error(_) => todo!(),
         }
     }
+
+    /// Get the C type of the given type, used in `extern "C"` functions signatures
+    fn get_cty_cabi(&self, ty: Ty<'tcx>) -> CTy<'mx> {
+        match ty.kind() {
+            TyKind::Bool => self.mcx.bool(),
+            TyKind::Char => self.mcx.int(IntTy::I32),
+            TyKind::Int(int) => self.mcx.int(*int),
+            TyKind::Uint(uint) => self.mcx.uint(*uint),
+            TyKind::RawPtr(ty, m) => {
+                let mut ty = self.get_cty_cabi(*ty);
+                if m.is_not() {
+                    ty = ty.to_const();
+                }
+                self.mcx.ptr(ty)
+            }
+
+            _ => todo!(), // note: some cases are unreachable
+        }
+    }
 }
 
 impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     fn backend_type(&self, layout: TyAndLayout<'tcx>) -> Self::Type {
-        self.get_cty(layout.ty)
+        self.get_cty_rabi(layout.ty)
     }
 
     fn cast_backend_type(&self, ty: &rustc_target::abi::call::CastTarget) -> Self::Type {
@@ -60,11 +93,22 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
 
     fn fn_decl_backend_type(&self, fn_abi: &FnAbi<'tcx, Ty<'tcx>>) -> Self::Type {
         assert!(!fn_abi.c_variadic, "TODO: variadic parameters");
-        assert!(matches!(fn_abi.conv, Conv::C | Conv::Rust), "TODO: non-C ABI");
 
-        let ret_ty = self.get_cty(fn_abi.ret.layout.ty);
-        let args = fn_abi.args.iter().map(|arg| self.get_cty(arg.layout.ty)).collect();
-        self.mcx.fn_ptr(ret_ty, args)
+        let mut args = Vec::with_capacity(fn_abi.args.len());
+        for arg in &fn_abi.args {
+            match arg.mode {
+                PassMode::Ignore => continue,
+                PassMode::Direct(_) => args.push(self.get_cty(arg.layout.ty, fn_abi.conv)),
+                PassMode::Pair(_, _) => {
+                    args.push(self.scalar_pair_element_backend_type(arg.layout, 0, false));
+                    args.push(self.scalar_pair_element_backend_type(arg.layout, 1, false));
+                }
+                PassMode::Cast { .. } => todo!(),
+                PassMode::Indirect { .. } => todo!(),
+            }
+        }
+        let ret = self.get_cty(fn_abi.ret.layout.ty, fn_abi.conv);
+        self.mcx.fn_ptr(ret, args.into(), fn_abi.conv)
     }
 
     fn fn_ptr_backend_type(&self, fn_abi: &FnAbi<'tcx, Ty<'tcx>>) -> Self::Type {
@@ -76,7 +120,7 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn immediate_backend_type(&self, layout: TyAndLayout<'tcx>) -> Self::Type {
-        self.get_cty(layout.ty)
+        self.get_cty_rabi(layout.ty)
     }
 
     fn is_backend_immediate(&self, layout: TyAndLayout<'tcx>) -> bool {

@@ -19,9 +19,9 @@ use rustc_middle::ty::layout::{
     TyAndLayout,
 };
 use rustc_middle::ty::{Instance, ParamEnv, Ty, TyCtxt, TyKind};
-use rustc_target::abi::call::FnAbi;
+use rustc_target::abi::call::{Conv, FnAbi};
 use rustc_target::spec::{HasTargetSpec, Target};
-use rustc_type_ir::IntTy;
+use rustc_type_ir::{IntTy, UintTy};
 
 use crate::context::CodegenCx;
 
@@ -145,7 +145,8 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         self.bb.push_stmt(self.cx.mcx.ret(None));
     }
 
-    fn ret(&mut self, v: Self::Value) {
+    fn ret(&mut self, mut v: Self::Value) {
+        v = self.pointercast(v, self.func.fn_ptr().ret);
         self.bb.push_stmt(self.cx.mcx.ret(Some(self.cx.mcx.value(v.0))))
     }
 
@@ -370,20 +371,53 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
 
         let op = match oop {
             OverflowOp::Add => match ty.kind() {
-                TyKind::Int(IntTy::I32) => "__rust_checked_add_i32",
+                TyKind::Int(IntTy::I8) => "__rust_ckd_add_i8",
+                TyKind::Int(IntTy::I16) => "__rust_ckd_add_i16",
+                TyKind::Int(IntTy::I32) => "__rust_ckd_add_i32",
+                TyKind::Int(IntTy::I64) => "__rust_ckd_add_i64",
+                TyKind::Int(IntTy::Isize) => "__rust_ckd_add_intptr",
+                TyKind::Uint(UintTy::U8) => "__rust_ckd_add_u8",
+                TyKind::Uint(UintTy::U16) => "__rust_ckd_add_u16",
+                TyKind::Uint(UintTy::U32) => "__rust_ckd_add_u32",
+                TyKind::Uint(UintTy::U64) => "__rust_ckd_add_u64",
+                TyKind::Uint(UintTy::Usize) => "__rust_ckd_add_uintptr",
                 _ => todo!(),
             },
-            OverflowOp::Sub => todo!(),
-            OverflowOp::Mul => todo!(),
+            OverflowOp::Sub => match ty.kind() {
+                TyKind::Int(IntTy::I8) => "__rust_ckd_sub_i8",
+                TyKind::Int(IntTy::I16) => "__rust_ckd_sub_i16",
+                TyKind::Int(IntTy::I32) => "__rust_ckd_sub_i32",
+                TyKind::Int(IntTy::I64) => "__rust_ckd_sub_i64",
+                TyKind::Int(IntTy::Isize) => "__rust_ckd_sub_intptr",
+                TyKind::Uint(UintTy::U8) => "__rust_ckd_sub_u8",
+                TyKind::Uint(UintTy::U16) => "__rust_ckd_sub_u16",
+                TyKind::Uint(UintTy::U32) => "__rust_ckd_sub_u32",
+                TyKind::Uint(UintTy::U64) => "__rust_ckd_sub_u64",
+                TyKind::Uint(UintTy::Usize) => "__rust_ckd_sub_uintptr",
+                _ => todo!(),
+            },
+            OverflowOp::Mul => match ty.kind() {
+                TyKind::Int(IntTy::I8) => "__rust_ckd_mul_i8",
+                TyKind::Int(IntTy::I16) => "__rust_ckd_mul_i16",
+                TyKind::Int(IntTy::I32) => "__rust_ckd_mul_i32",
+                TyKind::Int(IntTy::I64) => "__rust_ckd_mul_i64",
+                TyKind::Int(IntTy::Isize) => "__rust_ckd_mul_intptr",
+                TyKind::Uint(UintTy::U8) => "__rust_ckd_mul_u8",
+                TyKind::Uint(UintTy::U16) => "__rust_ckd_mul_u16",
+                TyKind::Uint(UintTy::U32) => "__rust_ckd_mul_u32",
+                TyKind::Uint(UintTy::U64) => "__rust_ckd_mul_u64",
+                TyKind::Uint(UintTy::Usize) => "__rust_ckd_mul_uintptr",
+                _ => todo!(),
+            },
         };
 
-        self.bb.push_stmt(mcx.decl(mcx.var(overflow, mcx.bool(), None)));
+        self.bb.push_stmt(mcx.decl(mcx.var(ret, lhs.1, None)));
         self.bb.push_stmt(mcx.decl(mcx.var(
-            ret,
-            lhs.1,
+            overflow,
+            mcx.bool(),
             Some(mcx.call(
                 mcx.raw(op),
-                [mcx.value(lhs.0), mcx.value(rhs.0), mcx.unary("&", mcx.value(overflow))],
+                [mcx.value(lhs.0), mcx.value(rhs.0), mcx.unary("&", mcx.value(ret))],
             )),
         )));
 
@@ -395,7 +429,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn to_immediate_scalar(&mut self, val: Self::Value, scalar: rustc_abi::Scalar) -> Self::Value {
-        todo!()
+        val // TODO: other circumstances?
     }
 
     fn alloca(&mut self, size: rustc_abi::Size, align: rustc_abi::Align) -> Self::Value {
@@ -404,7 +438,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         let buf = self.func.0.next_local_var();
         self.bb.push_stmt(mcx.decl(mcx.var(
             buf,
-            mcx.arr(mcx.char(), size.bytes_usize()),
+            mcx.arr(mcx.char(), Some(size.bytes_usize().try_into().unwrap())),
             Some(mcx.init_list([mcx.value(mcx.scalar(0))])),
         )));
 
@@ -620,7 +654,19 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn pointercast(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {
-        todo!()
+        if val.1 == dest_ty {
+            return val;
+        }
+
+        let mcx = self.cx.mcx;
+        let ret = self.func.0.next_local_var();
+
+        self.bb.push_stmt(mcx.decl(mcx.var(
+            ret,
+            dest_ty,
+            Some(mcx.cast(dest_ty, mcx.value(val.0))),
+        )));
+        (ret, dest_ty)
     }
 
     fn icmp(&mut self, op: IntPredicate, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -811,21 +857,42 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         assert!(llfn.0.is_func(), "calling a non-function: {:?}", llfn);
 
         let mcx = self.cx.mcx;
-        let ret_ty = llty.ret_ty().expect("not a function type");
+        let fn_ptr = llty.fn_ptr().expect("not a function type");
 
-        let call =
-            mcx.call(mcx.value(llfn.0), args.iter().map(|x| mcx.value(x.0)).collect::<Box<[_]>>());
+        /* ABI-conversion:
+           In case of undefined behavior, we use intptr_t as the Rust pointer type,
+           but when calling into C libraries, the pointer type is actual C pointers.
 
-        let ret = if ret_ty.is_void() {
+           Therefore, when calling a `extern "C"` function, we need to convert
+           the intptr_t pointers to the C pointers.
+        */
+        let call = match fn_ptr.abi {
+            Conv::Rust => {
+                let args = args.iter().map(|&(x, _)| mcx.value(x)).collect::<Box<[_]>>();
+                mcx.call(mcx.value(llfn.0), args)
+            }
+            Conv::C => {
+                let args = args
+                    .iter()
+                    .zip(fn_ptr.args.iter())
+                    .map(|(&v, &ty)| self.pointercast(v, ty))
+                    .map(|(x, _)| mcx.value(x))
+                    .collect::<Box<[_]>>();
+                mcx.call(mcx.value(llfn.0), args)
+            }
+            _ => todo!(),
+        };
+
+        let ret = if fn_ptr.ret.is_void() {
             self.bb.push_stmt(mcx.expr(call));
             CValue::Null
         } else {
             let ret = self.func.0.next_local_var();
-            self.bb.push_stmt(mcx.decl(mcx.var(ret, ret_ty, Some(call))));
+            self.bb.push_stmt(mcx.decl(mcx.var(ret, fn_ptr.ret, Some(call))));
             ret
         };
 
-        (ret, ret_ty)
+        (ret, fn_ptr.ret)
     }
 
     fn zext(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {

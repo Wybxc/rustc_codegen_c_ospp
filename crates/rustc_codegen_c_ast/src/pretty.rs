@@ -31,12 +31,13 @@ impl Printer {
     pub(crate) fn seperated<T>(
         &mut self,
         sep: &'static str,
-        elements: &[T],
-        mut op: impl FnMut(&mut Self, &T),
+        elements: impl IntoIterator<Item = T>,
+        mut op: impl FnMut(&mut Self, T),
     ) {
-        if let Some((first, rest)) = elements.split_first() {
+        let mut elements = elements.into_iter();
+        if let Some(first) = elements.next() {
             op(self, first);
-            for elt in rest {
+            for elt in elements {
                 self.pp.word_space(sep);
                 op(self, elt);
             }

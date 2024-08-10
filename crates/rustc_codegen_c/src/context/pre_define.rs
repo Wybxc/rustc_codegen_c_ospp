@@ -27,12 +27,10 @@ impl<'tcx, 'mx> PreDefineMethods<'tcx> for CodegenCx<'tcx, 'mx> {
         symbol_name: &str,
     ) {
         let fn_abi = self.fn_abi_of_instance(instance, ty::List::empty());
-
-        let args = fn_abi.args.iter().map(|arg| self.immediate_backend_type(arg.layout));
-        let ret = self.immediate_backend_type(fn_abi.ret.layout);
+        let fn_ptr = self.fn_decl_backend_type(fn_abi);
 
         let symbol_name = symbol_name.replace('.', "_");
-        let func = CFuncKind::new(self.mcx.alloc_str(&symbol_name), ret, args);
+        let func = CFuncKind::new(self.mcx.alloc_str(&symbol_name), fn_ptr);
         let func = Interned::new_unchecked(self.mcx.create_func(func));
         self.mcx.module().push_func(func);
         self.function_instances.borrow_mut().insert(instance, func);

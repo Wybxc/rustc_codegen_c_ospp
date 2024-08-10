@@ -10,6 +10,7 @@ extern crate rustc_arena;
 extern crate rustc_ast_pretty;
 extern crate rustc_data_structures;
 extern crate rustc_hash;
+extern crate rustc_target;
 extern crate rustc_type_ir;
 
 pub mod arena;

@@ -44,7 +44,6 @@ fn module_codegen(tcx: TyCtxt<'_>, cgu_name: rustc_span::Symbol) -> ModuleCodege
 
     mcx.module().push_includes(&[
         "stdlib.h",
-        "stdio.h",
         "stdint.h",
         "stddef.h",
         "stdbool.h",

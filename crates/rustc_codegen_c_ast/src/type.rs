@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
+use std::num::NonZeroUsize;
 
 use rustc_data_structures::intern::Interned;
+use rustc_target::abi::call::Conv;
 use rustc_type_ir::{IntTy, UintTy};
 
 use crate::expr::CValue;
@@ -24,11 +26,11 @@ impl<'mx> CTy<'mx> {
         matches!(self.base, CTyBase::Primitive(CPTy::Void))
     }
 
-    /// Get the return type of the function pointer.
-    pub fn ret_ty(self) -> Option<CTy<'mx>> {
+    /// Gets the function pointer type if this is a function pointer.
+    pub fn fn_ptr(self) -> Option<&'mx CFnPtr<'mx>> {
         if let CTyBase::Ref(ty) = self.base {
-            if let CTyKind::FnPtr(ret, _) = ty.0 {
-                return Some(*ret);
+            if let CTyKind::FnPtr(fn_ptr) = ty.0 {
+                return Some(fn_ptr);
             }
         }
         None
@@ -117,13 +119,13 @@ impl CPTy {
             CPTy::Bool => "bool",
             CPTy::Char => "char",
 
-            CPTy::Isize => "size_t",
+            CPTy::Isize => "intptr_t",
             CPTy::I8 => "int8_t",
             CPTy::I16 => "int16_t",
             CPTy::I32 => "int32_t",
             CPTy::I64 => "int64_t",
 
-            CPTy::Usize => "size_t",
+            CPTy::Usize => "uintptr_t",
             CPTy::U8 => "uint8_t",
             CPTy::U16 => "uint16_t",
             CPTy::U32 => "uint32_t",
@@ -157,8 +159,15 @@ impl CPTy {
 pub enum CTyKind<'mx> {
     Pointer(CTy<'mx>),
     // Record(String),
-    Array(CTy<'mx>, usize),
-    FnPtr(CTy<'mx>, Box<[CTy<'mx>]>),
+    Array(CTy<'mx>, Option<NonZeroUsize>),
+    FnPtr(CFnPtr<'mx>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CFnPtr<'mx> {
+    pub ret: CTy<'mx>,
+    pub args: Box<[CTy<'mx>]>,
+    pub abi: Conv,
 }
 
 impl<'mx> ModuleCtxt<'mx> {
@@ -209,13 +218,13 @@ impl<'mx> ModuleCtxt<'mx> {
     }
 
     /// Get the array type
-    pub fn arr(&self, ty: CTy<'mx>, n: usize) -> CTy<'mx> {
+    pub fn arr(&self, ty: CTy<'mx>, n: Option<NonZeroUsize>) -> CTy<'mx> {
         self.intern_ty(CTyKind::Array(ty, n)).into()
     }
 
     /// Get the function type
-    pub fn fn_ptr(&self, ret: CTy<'mx>, args: Box<[CTy<'mx>]>) -> CTy<'mx> {
-        self.intern_ty(CTyKind::FnPtr(ret, args)).into()
+    pub fn fn_ptr(&self, ret: CTy<'mx>, args: Box<[CTy<'mx>]>, abi: Conv) -> CTy<'mx> {
+        self.intern_ty(CTyKind::FnPtr(CFnPtr { ret, args, abi })).into()
     }
 }
 
@@ -224,7 +233,7 @@ impl Printer {
         enum TyDeclPart<'mx> {
             Ident(Option<CValue<'mx>>),
             Ptr(CTyQuals),
-            Array(usize, CTyQuals),
+            Array(Option<NonZeroUsize>, CTyQuals),
             FnArgs(Box<[CTy<'mx>]>),
             LParen,
             RParen,
@@ -245,7 +254,9 @@ impl Printer {
                     TyDeclPart::Array(n, quals) => {
                         printer.word("[");
                         printer.print_ty_quals(*quals);
-                        printer.word(format!("{}", n));
+                        if let Some(n) = n {
+                            printer.word(format!("{}", n));
+                        }
                         printer.word("]");
                     }
                     TyDeclPart::FnArgs(args) => printer.ibox_delim(INDENT, ("(", ")"), |p| {
@@ -263,7 +274,7 @@ impl Printer {
             match kind.0 {
                 CTyKind::Pointer(_) => decl_parts.push_front(TyDeclPart::Ptr(ty.quals)),
                 CTyKind::Array(_, n) => decl_parts.push_back(TyDeclPart::Array(*n, ty.quals)),
-                CTyKind::FnPtr(_, args) => {
+                CTyKind::FnPtr(CFnPtr { args, .. }) => {
                     decl_parts.push_front(TyDeclPart::LParen);
                     decl_parts.push_front(TyDeclPart::RParen);
                     decl_parts.push_back(TyDeclPart::FnArgs(args.clone()));
@@ -272,7 +283,7 @@ impl Printer {
             ty = match kind.0 {
                 CTyKind::Pointer(ty) => *ty,
                 CTyKind::Array(ty, _) => *ty,
-                CTyKind::FnPtr(ty, _) => *ty,
+                CTyKind::FnPtr(CFnPtr { ret, .. }) => *ret,
             };
         }
 

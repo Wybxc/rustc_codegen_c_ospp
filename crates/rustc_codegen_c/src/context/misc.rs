@@ -1,9 +1,10 @@
 use std::cell::RefCell;
 
-use rustc_codegen_ssa::traits::MiscMethods;
+use rustc_codegen_ssa::traits::{LayoutTypeMethods, MiscMethods};
 use rustc_hash::FxHashMap;
 use rustc_middle::mir::mono::CodegenUnit;
-use rustc_middle::ty::{Instance, PolyExistentialTraitRef, Ty};
+use rustc_middle::ty::layout::FnAbiOf;
+use rustc_middle::ty::{self, Instance, PolyExistentialTraitRef, Ty};
 
 use crate::context::CodegenCx;
 
@@ -19,9 +20,24 @@ impl<'tcx, 'mx> MiscMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn get_fn_addr(&self, instance: Instance<'tcx>) -> Self::Value {
-        let func_name = self.mcx.alloc_str(self.tcx.symbol_name(instance).name);
-        let val = self.mcx.func(func_name); // TODO: mangling
-        let ty = self.mcx.ptr(self.mcx.void());
+        if let Some(func) = self.function_instances.borrow().get(&instance) {
+            let val = self.mcx.fn_ref(func.0.name);
+            let ty = func.0.ty;
+            return (val, ty);
+        }
+
+        if let Some(&val) = self.function_declarations.borrow().get(&instance) {
+            return val;
+        }
+
+        let mcx = self.mcx;
+
+        let val = mcx.fn_ref(mcx.alloc_str(self.tcx.symbol_name(instance).name));
+        let ty = self.fn_decl_backend_type(self.fn_abi_of_instance(instance, ty::List::empty()));
+        mcx.module().push_decl(mcx.func(val, ty.fn_ptr().unwrap()));
+
+        self.function_declarations.borrow_mut().insert(instance, (val, ty));
+
         (val, ty)
     }
 
