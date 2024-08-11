@@ -74,6 +74,7 @@ impl Manifest {
             .args(["-C", "lto=false"])
             .arg(format!("-Lall={}", self.out_dir.display()))
             .env("CFLAGS", "-Irust_runtime")
+            .arg("-lc")
             .arg("-lrust_runtime");
         if self.debug {
             command.env("RUST_BACKTRACE", "full");
