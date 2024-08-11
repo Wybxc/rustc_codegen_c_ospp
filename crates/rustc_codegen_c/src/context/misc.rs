@@ -23,7 +23,7 @@ impl<'tcx, 'mx> MiscMethods<'tcx> for CodegenCx<'tcx, 'mx> {
         if let Some(func) = self.function_instances.borrow().get(&instance) {
             let val = self.mcx.fn_ref(func.0.name);
             let ty = func.0.ty;
-            return (val, ty);
+            return (val, ty).into();
         }
 
         if let Some(&val) = self.function_declarations.borrow().get(&instance) {
@@ -36,9 +36,9 @@ impl<'tcx, 'mx> MiscMethods<'tcx> for CodegenCx<'tcx, 'mx> {
         let ty = self.fn_decl_backend_type(self.fn_abi_of_instance(instance, ty::List::empty()));
         mcx.module().push_decl(mcx.func(val, ty.fn_ptr().unwrap()));
 
-        self.function_declarations.borrow_mut().insert(instance, (val, ty));
+        self.function_declarations.borrow_mut().insert(instance, (val, ty).into());
 
-        (val, ty)
+        (val, ty).into()
     }
 
     fn eh_personality(&self) -> Self::Value {

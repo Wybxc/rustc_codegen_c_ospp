@@ -126,7 +126,7 @@ impl Printer {
         self.word(":;");
         for stmt in bb.stmts.borrow().iter() {
             self.hardbreak();
-            self.print_stmt(stmt);
+            self.print_stmt(stmt, true);
         }
     }
 }

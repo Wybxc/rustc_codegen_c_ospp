@@ -19,11 +19,11 @@ use rustc_middle::ty::layout::{
     TyAndLayout,
 };
 use rustc_middle::ty::{Instance, ParamEnv, Ty, TyCtxt, TyKind};
-use rustc_target::abi::call::{Conv, FnAbi};
+use rustc_target::abi::call::FnAbi;
 use rustc_target::spec::{HasTargetSpec, Target};
 use rustc_type_ir::{IntTy, UintTy};
 
-use crate::context::CodegenCx;
+use crate::context::{BasicBlock, CodegenCx};
 
 mod abi;
 mod asm;
@@ -109,8 +109,8 @@ impl<'tcx, 'mx> FnAbiOfHelpers<'tcx> for Builder<'_, 'tcx, 'mx> {
 }
 
 impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
-    fn build(cx: &'a Self::CodegenCx, llbb: Self::BasicBlock) -> Self {
-        Self { cx, func: llbb.0, bb: llbb.1 }
+    fn build(cx: &'a Self::CodegenCx, bb: Self::BasicBlock) -> Self {
+        Self { cx, func: bb.func, bb: bb.cbb }
     }
 
     fn cx(&self) -> &Self::CodegenCx {
@@ -123,22 +123,22 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
 
     fn set_span(&mut self, _span: rustc_span::Span) {}
 
-    fn append_block(cx: &'a Self::CodegenCx, llfn: Self::Function, name: &str) -> Self::BasicBlock {
-        let bb = llfn.0.new_bb(name, &cx.mcx);
-        (llfn, bb)
+    fn append_block(cx: &'a Self::CodegenCx, func: Self::Function, name: &str) -> Self::BasicBlock {
+        let cbb = func.0.new_bb(name, &cx.mcx);
+        BasicBlock { cbb, func }
     }
 
     fn append_sibling_block(&mut self, name: &str) -> Self::BasicBlock {
-        let bb = self.func.0.new_bb(name, &self.cx.mcx);
-        (self.func, bb)
+        let cbb = self.func.0.new_bb(name, &self.cx.mcx);
+        BasicBlock { cbb, func: self.func }
     }
 
-    fn switch_to_block(&mut self, llbb: Self::BasicBlock) {
+    fn switch_to_block(&mut self, bb: Self::BasicBlock) {
         assert_eq!(
-            self.func, llbb.0,
+            self.func, bb.func,
             "switch_to_block called on a block from a different function"
         );
-        self.bb = llbb.1;
+        self.bb = bb.cbb;
     }
 
     fn ret_void(&mut self) {
@@ -147,27 +147,22 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
 
     fn ret(&mut self, mut v: Self::Value) {
         v = self.pointercast(v, self.func.fn_ptr().ret);
-        self.bb.push_stmt(self.cx.mcx.ret(Some(self.cx.mcx.value(v.0))))
+        self.bb.push_stmt(self.cx.mcx.ret(Some(self.cx.mcx.value(v.cval))))
     }
 
     fn br(&mut self, dest: Self::BasicBlock) {
-        assert_eq!(self.func, dest.0, "br called on a block from a different function");
-        self.bb.push_stmt(self.cx.mcx.goto(dest.1.label));
+        assert_eq!(self.func, dest.func, "br called on a block from a different function");
+        self.bb.push_stmt(self.cx.mcx.goto(dest.cbb.label));
     }
 
-    fn cond_br(
-        &mut self,
-        cond: Self::Value,
-        then_llbb: Self::BasicBlock,
-        else_llbb: Self::BasicBlock,
-    ) {
-        assert_eq!(self.func, then_llbb.0, "br called on a block from a different function");
-        assert_eq!(self.func, else_llbb.0, "br called on a block from a different function");
+    fn cond_br(&mut self, cond: Self::Value, then_bb: Self::BasicBlock, else_bb: Self::BasicBlock) {
+        assert_eq!(self.func, then_bb.func, "br called on a block from a different function");
+        assert_eq!(self.func, else_bb.func, "br called on a block from a different function");
         let mcx = &self.cx.mcx;
         self.bb.push_stmt(self.cx.mcx.if_stmt(
-            mcx.value(cond.0),
-            mcx.goto(then_llbb.1.label),
-            Some(mcx.goto(else_llbb.1.label)),
+            mcx.value(cond.cval),
+            mcx.goto(then_bb.cbb.label),
+            Some(mcx.goto(else_bb.cbb.label)),
         ));
     }
 
@@ -332,15 +327,15 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn and(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        todo!()
+        self.binary_arith("&", lhs, rhs)
     }
 
     fn or(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        todo!()
+        self.binary_arith("|", lhs, rhs)
     }
 
     fn xor(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
-        todo!()
+        self.binary_arith("^", lhs, rhs)
     }
 
     fn neg(&mut self, v: Self::Value) -> Self::Value {
@@ -363,7 +358,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         lhs: Self::Value,
         rhs: Self::Value,
     ) -> (Self::Value, Self::Value) {
-        assert!(lhs.1 == rhs.1, "Checked binop on different types");
+        assert!(lhs.ty == rhs.ty, "Checked binop on different types");
 
         let mcx = self.cx.mcx;
         let ret = self.func.0.next_local_var();
@@ -411,17 +406,17 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
             },
         };
 
-        self.bb.push_stmt(mcx.decl(mcx.var(ret, lhs.1, None)));
+        self.bb.push_stmt(mcx.decl(mcx.var(ret, lhs.ty, None)));
         self.bb.push_stmt(mcx.decl(mcx.var(
             overflow,
             mcx.bool(),
             Some(mcx.call(
                 mcx.raw(op),
-                [mcx.value(lhs.0), mcx.value(rhs.0), mcx.unary("&", mcx.value(ret))],
+                [mcx.value(lhs.cval), mcx.value(rhs.cval), mcx.unary("&", mcx.value(ret))],
             )),
         )));
 
-        ((ret, lhs.1), (overflow, mcx.bool()))
+        ((ret, lhs.ty).into(), (overflow, mcx.bool()).into())
     }
 
     fn from_immediate(&mut self, val: Self::Value) -> Self::Value {
@@ -446,7 +441,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         let ty = mcx.ptr(mcx.char());
         self.bb.push_stmt(mcx.decl(mcx.var(ret, ty, Some(mcx.cast(ty, mcx.value(buf))))));
 
-        (ret, ty)
+        (ret, ty).into()
     }
 
     fn dynamic_alloca(&mut self, size: Self::Value, align: rustc_abi::Align) -> Self::Value {
@@ -459,10 +454,10 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         self.bb.push_stmt(mcx.decl(mcx.var(
             ret,
             ty,
-            Some(mcx.unary("*", mcx.cast(mcx.ptr(ty), mcx.value(ptr.0)))),
+            Some(mcx.unary("*", mcx.cast(mcx.ptr(ty), mcx.value(ptr.cval)))),
         )));
 
-        (ret, ty)
+        (ret, ty).into()
     }
 
     fn volatile_load(&mut self, ty: Self::Type, ptr: Self::Value) -> Self::Value {
@@ -498,7 +493,24 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         count: u64,
         dest: PlaceRef<'tcx, Self::Value>,
     ) {
-        todo!()
+        assert!(dest.val.llextra.is_none(), "TODO");
+
+        let mcx = self.cx.mcx;
+        let loop_var = self.func.0.next_local_var();
+
+        let init = mcx.var(loop_var, mcx.uint(UintTy::Usize), Some(mcx.value(mcx.scalar(0))));
+        let cond = mcx.binary(mcx.value(loop_var), mcx.value(mcx.scalar(count.into())), "<");
+        let next = mcx.unary("++", mcx.value(loop_var));
+
+        self.bb.push_stmt(mcx.for_stmt(
+            mcx.decl(init),
+            cond,
+            mcx.expr(next),
+            mcx.expr(mcx.assign(
+                mcx.index(mcx.value(dest.val.llval.cval), mcx.value(loop_var)),
+                mcx.value(elem.immediate().cval),
+            )),
+        ));
     }
 
     fn range_metadata(&mut self, load: Self::Value, range: rustc_abi::WrappingRange) {
@@ -526,8 +538,10 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         flags: MemFlags, // TODO: align & flags
     ) -> Self::Value {
         let mcx = self.cx.mcx;
-        self.bb.push_stmt(mcx.expr(mcx.assign(mcx.unary("*", mcx.value(ptr.0)), mcx.value(val.0))));
-        (mcx.scalar(0), mcx.int(IntTy::I32))
+        self.bb.push_stmt(
+            mcx.expr(mcx.assign(mcx.unary("*", mcx.value(ptr.cval)), mcx.value(val.cval))),
+        );
+        (mcx.scalar(0), mcx.int(IntTy::I32)).into()
     }
 
     fn atomic_store(
@@ -554,14 +568,18 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         let mcx = self.cx.mcx;
         let ptr_ty = mcx.ptr(ty);
         let arr = self.func.0.next_local_var();
-        self.bb.push_stmt(mcx.decl(mcx.var(arr, ptr_ty, Some(mcx.cast(ptr_ty, mcx.value(ptr.0))))));
+        self.bb.push_stmt(mcx.decl(mcx.var(
+            arr,
+            ptr_ty,
+            Some(mcx.cast(ptr_ty, mcx.value(ptr.cval))),
+        )));
         let ret = self.func.0.next_local_var();
         self.bb.push_stmt(mcx.decl(mcx.var(
             ret,
             ptr_ty,
-            Some(mcx.unary("&", mcx.index(mcx.value(arr), mcx.value(indices[0].0)))),
+            Some(mcx.unary("&", mcx.index(mcx.value(arr), mcx.value(indices[0].cval)))),
         )));
-        (ret, ptr_ty)
+        (ret, ptr_ty).into()
     }
 
     fn trunc(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {
@@ -605,7 +623,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn ptrtoint(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {
-        todo!()
+        self.intcast(val, dest_ty, val.ty.is_signed())
     }
 
     fn inttoptr(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {
@@ -622,7 +640,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     /// The type of extension—sign-extension or zero-extension—depends on the
     /// signedness of the source type.
     ///
-    /// According to the C17 standard, section "6.3.1.3 Signed and unsigned
+    /// According to the C17 standard, section "6.3.ty.3 Signed and unsigned
     /// integers", casting to an unsigned integer behaves the same as in Rust.
     /// However, casting to a signed integer is implementation-defined.
     ///
@@ -636,7 +654,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         let dest = if let CTyBase::Primitive(ty) = dest_ty.base { ty } else { unreachable!() };
 
         let cast = if dest.is_signed() {
-            let cast = mcx.cast(CTy::primitive(dest.to_unsigned()), mcx.value(val.0));
+            let cast = mcx.cast(CTy::primitive(dest.to_unsigned()), mcx.value(val.cval));
             mcx.call(
                 mcx.raw("__rust_utos"),
                 [
@@ -647,14 +665,14 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
                 ],
             )
         } else {
-            mcx.cast(CTy::primitive(dest), mcx.value(val.0))
+            mcx.cast(CTy::primitive(dest), mcx.value(val.cval))
         };
         self.bb.push_stmt(mcx.decl(mcx.var(ret, dest_ty, Some(cast))));
-        (ret, dest_ty)
+        (ret, dest_ty).into()
     }
 
     fn pointercast(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {
-        if val.1 == dest_ty {
+        if val.ty == dest_ty {
             return val;
         }
 
@@ -664,9 +682,9 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         self.bb.push_stmt(mcx.decl(mcx.var(
             ret,
             dest_ty,
-            Some(mcx.cast(dest_ty, mcx.value(val.0))),
+            Some(mcx.cast(dest_ty, mcx.value(val.cval))),
         )));
-        (ret, dest_ty)
+        (ret, dest_ty).into()
     }
 
     fn icmp(&mut self, op: IntPredicate, lhs: Self::Value, rhs: Self::Value) -> Self::Value {
@@ -827,11 +845,11 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn lifetime_start(&mut self, ptr: Self::Value, size: rustc_abi::Size) {
-        todo!()
+        // TODO: what to do?
     }
 
     fn lifetime_end(&mut self, ptr: Self::Value, size: rustc_abi::Size) {
-        todo!()
+        // TODO: what to do?
     }
 
     fn instrprof_increment(
@@ -854,7 +872,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
         funclet: Option<&Self::Funclet>,
         instance: Option<Instance<'tcx>>,
     ) -> Self::Value {
-        assert!(llfn.0.is_func(), "calling a non-function: {:?}", llfn);
+        assert!(llfn.cval.is_func(), "calling a non-function: {:?}", llfn);
 
         let mcx = self.cx.mcx;
         let fn_ptr = llty.fn_ptr().expect("not a function type");
@@ -866,22 +884,13 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
            Therefore, when calling a `extern "C"` function, we need to convert
            the intptr_t pointers to the C pointers.
         */
-        let call = match fn_ptr.abi {
-            Conv::Rust => {
-                let args = args.iter().map(|&(x, _)| mcx.value(x)).collect::<Box<[_]>>();
-                mcx.call(mcx.value(llfn.0), args)
-            }
-            Conv::C => {
-                let args = args
-                    .iter()
-                    .zip(fn_ptr.args.iter())
-                    .map(|(&v, &ty)| self.pointercast(v, ty))
-                    .map(|(x, _)| mcx.value(x))
-                    .collect::<Box<[_]>>();
-                mcx.call(mcx.value(llfn.0), args)
-            }
-            _ => todo!(),
-        };
+        let args = args
+            .iter()
+            .zip(fn_ptr.args.iter())
+            .map(|(&v, &ty)| self.pointercast(v, ty))
+            .map(|x| mcx.value(x.cval))
+            .collect::<Box<[_]>>();
+        let call = mcx.call(mcx.value(llfn.cval), args);
 
         let ret = if fn_ptr.ret.is_void() {
             self.bb.push_stmt(mcx.expr(call));
@@ -892,7 +901,7 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
             ret
         };
 
-        (ret, fn_ptr.ret)
+        (ret, fn_ptr.ret).into()
     }
 
     fn zext(&mut self, val: Self::Value, dest_ty: Self::Type) -> Self::Value {

@@ -1,5 +1,4 @@
 use rustc_abi::HasDataLayout;
-use rustc_ast::Mutability;
 use rustc_codegen_c_ast::expr::CValue;
 use rustc_codegen_c_ast::r#type::{CTyBase, CTyKind};
 use rustc_codegen_ssa::traits::ConstMethods;
@@ -13,7 +12,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
         match t.base {
             CTyBase::Primitive(_) => todo!(),
             CTyBase::Ref(tkd) => match tkd.0 {
-                CTyKind::Pointer(_) => (CValue::Null, t),
+                CTyKind::Pointer(_) => (CValue::Null, t).into(),
                 _ => todo!(),
             },
         }
@@ -68,7 +67,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn const_usize(&self, i: u64) -> Self::Value {
-        (self.mcx.scalar(i as i128), self.mcx.uint(UintTy::Usize))
+        (self.mcx.scalar(i as i128), self.mcx.uint(UintTy::Usize)).into()
     }
 
     fn const_u8(&self, i: u8) -> Self::Value {
@@ -106,7 +105,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
         ty: Self::Type,
     ) -> Self::Value {
         match cv {
-            Scalar::Int(scalar) => (self.mcx.scalar(scalar.to_int(scalar.size())), ty),
+            Scalar::Int(scalar) => (self.mcx.scalar(scalar.to_int(scalar.size())), ty).into(),
             Scalar::Ptr(ptr, _) => {
                 let (prov, offset) = ptr.into_parts(); // we know the `offset` is relative
                 assert!(offset.bytes() == 0, "TODO");
@@ -117,7 +116,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
                     GlobalAlloc::Static(_) => todo!(),
                     GlobalAlloc::Memory(alloc) => self.const_alloc(alloc),
                 };
-                (base_addr, ty) // this may create a char* implicitly casted to other pointers
+                (base_addr, ty).into() // this may create a char* implicitly casted to other pointers
             }
         }
     }
@@ -161,10 +160,7 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
         assert!(chunks.len() == 1, "TODO");
         let mcx = self.mcx;
         let var = mcx.next_global_var();
-        let ty = match alloc.mutability {
-            Mutability::Mut => self.mcx.arr(self.mcx.char().to_const(), None),
-            Mutability::Not => self.mcx.arr(self.mcx.char(), None),
-        };
+        let ty = self.mcx.arr(self.mcx.char().to_const_if(alloc.mutability.is_not()), None);
         mcx.module().push_decl(mcx.var(
             var,
             ty,

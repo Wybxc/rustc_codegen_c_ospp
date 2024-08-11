@@ -10,7 +10,7 @@ use crate::pretty::{Printer, INDENT};
 use crate::ModuleCtxt;
 
 /// C types with qualifiers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CTy<'mx> {
     pub base: CTyBase<'mx>,
     pub quals: CTyQuals,
@@ -26,6 +26,15 @@ impl<'mx> CTy<'mx> {
         matches!(self.base, CTyBase::Primitive(CPTy::Void))
     }
 
+    /// Whether the type is a signed integer.
+    pub fn is_signed(self) -> bool {
+        if let CTyBase::Primitive(ty) = self.base {
+            ty.is_signed()
+        } else {
+            false
+        }
+    }
+
     /// Gets the function pointer type if this is a function pointer.
     pub fn fn_ptr(self) -> Option<&'mx CFnPtr<'mx>> {
         if let CTyBase::Ref(ty) = self.base {
@@ -36,15 +45,24 @@ impl<'mx> CTy<'mx> {
         None
     }
 
-    pub fn to_const(self) -> Self {
+    pub fn to_const_if(self, cond: bool) -> Self {
+        if cond {
+            return self;
+        }
         Self { base: self.base, quals: self.quals | CTyQuals::CONST }
     }
 
-    pub fn to_volatile(self) -> Self {
+    pub fn to_volatile_if(self, cond: bool) -> Self {
+        if cond {
+            return self;
+        }
         Self { base: self.base, quals: self.quals | CTyQuals::VOLATILE }
     }
 
-    pub fn to_restrict(self) -> Self {
+    pub fn to_restrict_if(self, cond: bool) -> Self {
+        if cond {
+            return self;
+        }
         Self { base: self.base, quals: self.quals | CTyQuals::RESTRICT }
     }
 }
@@ -55,8 +73,16 @@ impl<'mx> From<CTyBase<'mx>> for CTy<'mx> {
     }
 }
 
+impl std::fmt::Debug for CTy<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut pp = Printer::new();
+        pp.print_ty_decl(*self, None);
+        write!(f, "{}", pp.finish())
+    }
+}
+
 /// C types.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CTyBase<'mx> {
     Primitive(CPTy),
     Ref(Interned<'mx, CTyKind<'mx>>),

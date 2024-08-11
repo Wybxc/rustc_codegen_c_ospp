@@ -1,9 +1,11 @@
+use std::borrow::Cow;
+
 use crate::pretty::{Printer, INDENT};
 use crate::r#type::CTy;
 use crate::ModuleCtxt;
 
 /// Values of C variable, parameters and scalars
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum CValue<'mx> {
     Null,
     Scalar(i128),
@@ -13,8 +15,24 @@ pub enum CValue<'mx> {
 }
 
 impl<'mx> CValue<'mx> {
-    pub fn is_func(&self) -> bool {
+    pub fn is_func(self) -> bool {
         matches!(self, CValue::Func(_))
+    }
+
+    pub fn to_string(self) -> Cow<'static, str> {
+        match self {
+            CValue::Null => "NULL".into(),
+            CValue::Scalar(x) => x.to_string().into(),
+            CValue::Local(x) => format!("_{}", x).into(),
+            CValue::Global(x) => format!("_g{}", x).into(), // TODO: module-specific prefix
+            CValue::Func(x) => x.to_string().into(),
+        }
+    }
+}
+
+impl std::fmt::Debug for CValue<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
     }
 }
 
@@ -95,13 +113,7 @@ impl<'mx> ModuleCtxt<'mx> {
 
 impl Printer {
     pub fn print_value(&mut self, value: CValue) {
-        match value {
-            CValue::Null => self.word("NULL"),
-            CValue::Scalar(i) => self.word(i.to_string()),
-            CValue::Local(i) => self.word(format!("_{}", i)),
-            CValue::Global(i) => self.word(format!("_g{}", i)), // TODO: add module-specific prefix
-            CValue::Func(raw) => self.word(raw.to_string()),
-        }
+        self.word(value.to_string());
     }
 
     pub fn print_expr(&mut self, expr: CExpr, outer: bool) {

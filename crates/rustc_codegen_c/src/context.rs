@@ -30,10 +30,11 @@ mod type_membership;
 pub struct CodegenCx<'tcx, 'mx> {
     pub tcx: TyCtxt<'tcx>,
     pub mcx: ModuleCtxt<'mx>,
+
     // function declarations (in another crate or extern)
-    pub function_declarations: RefCell<FxHashMap<Instance<'tcx>, (CValue<'mx>, CTy<'mx>)>>,
+    function_declarations: RefCell<FxHashMap<Instance<'tcx>, Value<'mx>>>,
     // function instances (in this crate)
-    pub function_instances: RefCell<FxHashMap<Instance<'tcx>, CFunc<'mx>>>,
+    function_instances: RefCell<FxHashMap<Instance<'tcx>, CFunc<'mx>>>,
 }
 
 impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
@@ -47,10 +48,28 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Value<'mx> {
+    pub cval: CValue<'mx>,
+    pub ty: CTy<'mx>,
+}
+
+impl<'mx> From<(CValue<'mx>, CTy<'mx>)> for Value<'mx> {
+    fn from((cval, ty): (CValue<'mx>, CTy<'mx>)) -> Self {
+        Self { cval, ty }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BasicBlock<'mx> {
+    pub cbb: &'mx CBasicBlock<'mx>,
+    pub func: CFunc<'mx>,
+}
+
 impl<'tcx, 'mx> BackendTypes for CodegenCx<'tcx, 'mx> {
-    type Value = (CValue<'mx>, CTy<'mx>);
+    type Value = Value<'mx>;
     type Function = CFunc<'mx>;
-    type BasicBlock = (CFunc<'mx>, &'mx CBasicBlock<'mx>);
+    type BasicBlock = BasicBlock<'mx>;
     type Type = CTy<'mx>;
     type Funclet = ();
     type DIScope = ();

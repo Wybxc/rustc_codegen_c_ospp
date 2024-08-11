@@ -81,6 +81,6 @@ impl<'tcx, 'mx> BaseTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn val_ty(&self, v: Self::Value) -> Self::Type {
-        todo!()
+        v.ty
     }
 }

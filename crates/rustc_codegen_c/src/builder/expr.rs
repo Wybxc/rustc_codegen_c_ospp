@@ -1,19 +1,15 @@
-use rustc_codegen_c_ast::expr::CValue;
-use rustc_codegen_c_ast::r#type::CTy;
-
 use crate::builder::Builder;
-
-type Value<'mx> = (CValue<'mx>, CTy<'mx>);
+use crate::context::Value;
 
 impl<'a, 'tcx, 'mx> Builder<'a, 'tcx, 'mx> {
     pub fn unary(&mut self, op: &'static str, expr: Value<'mx>) -> Value<'mx> {
         let mcx = self.mcx;
-        let ty = expr.1;
+        let ty = expr.ty;
         let ret = self.func.0.next_local_var();
 
-        self.bb.push_stmt(mcx.decl(mcx.var(ret, ty, Some(mcx.unary(op, mcx.value(expr.0))))));
+        self.bb.push_stmt(mcx.decl(mcx.var(ret, ty, Some(mcx.unary(op, mcx.value(expr.cval))))));
 
-        (ret, ty)
+        (ret, ty).into()
     }
 
     pub fn binary_arith(
@@ -22,23 +18,23 @@ impl<'a, 'tcx, 'mx> Builder<'a, 'tcx, 'mx> {
         lhs: Value<'mx>,
         rhs: Value<'mx>,
     ) -> Value<'mx> {
-        assert!(lhs.1 == rhs.1, "cannot perform binary operation on different types");
+        assert!(lhs.ty == rhs.ty, "cannot perform binary operation on different types");
 
         let mcx = self.mcx;
-        let ty = lhs.1;
+        let ty = lhs.ty;
         let ret = self.func.0.next_local_var();
 
         self.bb.push_stmt(mcx.decl(mcx.var(
             ret,
             ty,
-            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), op)),
+            Some(mcx.binary(mcx.value(lhs.cval), mcx.value(rhs.cval), op)),
         )));
 
-        (ret, ty)
+        (ret, ty).into()
     }
 
     pub fn binary_cmp(&mut self, op: &'static str, lhs: Value<'mx>, rhs: Value<'mx>) -> Value<'mx> {
-        assert!(lhs.1 == rhs.1, "cannot perform binary operation on different types");
+        assert!(lhs.ty == rhs.ty, "cannot perform binary operation on different types");
 
         let mcx = self.mcx;
         let ty = mcx.bool();
@@ -47,9 +43,9 @@ impl<'a, 'tcx, 'mx> Builder<'a, 'tcx, 'mx> {
         self.bb.push_stmt(mcx.decl(mcx.var(
             ret,
             ty,
-            Some(mcx.binary(mcx.value(lhs.0), mcx.value(rhs.0), op)),
+            Some(mcx.binary(mcx.value(lhs.cval), mcx.value(rhs.cval), op)),
         )));
 
-        (ret, ty)
+        (ret, ty).into()
     }
 }

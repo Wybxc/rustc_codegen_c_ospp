@@ -1,7 +1,7 @@
 use rustc_abi::{Abi, Integer, Primitive};
 use rustc_codegen_c_ast::r#type::CTy;
 use rustc_codegen_ssa::traits::LayoutTypeMethods;
-use rustc_middle::ty::layout::TyAndLayout;
+use rustc_middle::ty::layout::{HasParamEnv, TyAndLayout};
 use rustc_middle::ty::Ty;
 use rustc_target::abi::call::{Conv, FnAbi, PassMode};
 use rustc_type_ir::{IntTy, TyKind, UintTy};
@@ -9,82 +9,147 @@ use rustc_type_ir::{IntTy, TyKind, UintTy};
 use crate::context::CodegenCx;
 
 impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
-    fn get_cty(&self, ty: Ty<'tcx>, abi: Conv) -> CTy<'mx> {
-        match abi {
-            Conv::C => self.get_cty_cabi(ty),
-            Conv::Rust => self.get_cty_rabi(ty),
-            _ => todo!(),
+    pub fn layout_of(&self, ty: Ty<'tcx>) -> TyAndLayout<'tcx> {
+        self.tcx.layout_of(self.param_env().and(ty)).unwrap()
+    }
+
+    fn get_cty(&self, layout: TyAndLayout<'tcx>, abi: Conv) -> CTy<'mx> {
+        dbg!(layout);
+        match layout.abi {
+            Abi::Uninhabited => self.mcx.void(),
+            Abi::Scalar(scalar) => self.get_cty_scalar(layout.ty, abi),
+            Abi::ScalarPair(_, _) => todo!(),
+            Abi::Vector { element, count } => todo!(),
+            Abi::Aggregate { sized } => self.mcx.void(), // TODO: struct
         }
     }
 
-    fn get_cty_rabi(&self, ty: Ty<'tcx>) -> CTy<'mx> {
+    fn get_cty_scalar(&self, ty: Ty<'tcx>, abi: Conv) -> CTy<'mx> {
+        let mcx = self.mcx;
         match ty.kind() {
-            TyKind::Bool => self.mcx.bool(),
-            TyKind::Char => self.mcx.int(IntTy::I32),
-            TyKind::Int(int) => self.mcx.int(*int),
-            TyKind::Uint(uint) => self.mcx.uint(*uint),
+            TyKind::Bool => mcx.bool(),
+            TyKind::Char => mcx.int(IntTy::I32),
+            TyKind::Int(int) => mcx.int(*int),
+            TyKind::Uint(uint) => mcx.uint(*uint),
             TyKind::Float(_) => todo!(),
-            TyKind::Adt(_, _) => self.mcx.void(), // TODO: struct
-            TyKind::Foreign(_) => todo!(),
-            TyKind::Str => self.mcx.char(),
-            TyKind::Array(_, _) => todo!(),
-            TyKind::Pat(_, _) => todo!(),
-            TyKind::Slice(_) => todo!(),
-            TyKind::RawPtr(_, _) => self.mcx.int(IntTy::Isize),
             TyKind::Ref(_, ty, m) => {
-                let mut ty = self.mcx.ptr(self.get_cty_rabi(*ty));
-                if m.is_not() {
-                    ty = ty.to_const();
-                }
-                ty
+                mcx.ptr(self.get_cty(self.layout_of(*ty), abi)).to_const_if(m.is_not())
             }
-            TyKind::FnDef(_, _) => todo!(),
-            TyKind::FnPtr(_) => todo!(),
-            TyKind::Dynamic(_, _, _) => todo!(),
-            TyKind::Closure(_, _) => todo!(),
-            TyKind::CoroutineClosure(_, _) => todo!(),
-            TyKind::Coroutine(_, _) => todo!(),
-            TyKind::CoroutineWitness(_, _) => todo!(),
-            TyKind::Never => self.mcx.void(),
-            TyKind::Tuple(t) => {
-                if t.is_empty() {
+            TyKind::RawPtr(ty, m) => match abi {
+                Conv::C => mcx.ptr(self.get_cty(self.layout_of(*ty), abi)).to_const_if(m.is_not()),
+                Conv::Rust => mcx.int(IntTy::Isize),
+                _ => todo!(),
+            },
+            TyKind::Adt(def, args) => {
+                if self.tcx.lang_items().c_void().is_some_and(|void| def.did() == void) {
                     self.mcx.void()
                 } else {
                     todo!()
                 }
             }
-            TyKind::Alias(_, _) => todo!(),
-            TyKind::Param(_) => todo!(),
-            TyKind::Bound(_, _) => todo!(),
-            TyKind::Placeholder(_) => todo!(),
-            TyKind::Infer(_) => todo!(),
-            TyKind::Error(_) => todo!(),
+            _ => todo!(),
         }
     }
 
-    /// Get the C type of the given type, used in `extern "C"` functions signatures
-    fn get_cty_cabi(&self, ty: Ty<'tcx>) -> CTy<'mx> {
-        match ty.kind() {
-            TyKind::Bool => self.mcx.bool(),
-            TyKind::Char => self.mcx.int(IntTy::I32),
-            TyKind::Int(int) => self.mcx.int(*int),
-            TyKind::Uint(uint) => self.mcx.uint(*uint),
-            TyKind::RawPtr(ty, m) => {
-                let mut ty = self.get_cty_cabi(*ty);
-                if m.is_not() {
-                    ty = ty.to_const();
-                }
-                self.mcx.ptr(ty)
-            }
+    // fn get_cty_rabi(&self, layout: TyAndLayout<'tcx>) -> CTy<'mx> {
+    //     let ty = self.tcx.erase_regions(layout.ty);
+    //     match ty.kind() {
+    //         TyKind::Bool => self.mcx.bool(),
+    //         TyKind::Char => self.mcx.int(IntTy::I32),
+    //         TyKind::Int(int) => self.mcx.int(*int),
+    //         TyKind::Uint(uint) => self.mcx.uint(*uint),
+    //         TyKind::Float(_) => todo!(),
+    //         TyKind::Adt(_, _) => self.mcx.void(), // TODO: struct
+    //         TyKind::Foreign(_) => todo!(),
+    //         TyKind::Str => self.mcx.char(),
+    //         TyKind::Array(ty, n) => todo!(),
+    //         TyKind::Pat(_, _) => todo!(),
+    //         TyKind::Slice(_) => todo!(),
+    //         TyKind::RawPtr(_, _) => self.mcx.int(IntTy::Isize),
+    //         TyKind::Ref(_, ty, m) => {
+    //             // let mut ty = self.mcx.ptr(self.get_cty_rabi(*ty));
+    //             // if m.is_not() {
+    //             //     ty = ty.to_const();
+    //             // }
+    //             // ty
+    //             todo!()
+    //         }
+    //         TyKind::FnDef(_, _) => todo!(),
+    //         TyKind::FnPtr(_) => todo!(),
+    //         TyKind::Dynamic(_, _, _) => todo!(),
+    //         TyKind::Closure(_, _) => todo!(),
+    //         TyKind::CoroutineClosure(_, _) => todo!(),
+    //         TyKind::Coroutine(_, _) => todo!(),
+    //         TyKind::CoroutineWitness(_, _) => todo!(),
+    //         TyKind::Never => self.mcx.void(),
+    //         TyKind::Tuple(t) => {
+    //             if t.is_empty() {
+    //                 self.mcx.void()
+    //             } else {
+    //                 todo!()
+    //             }
+    //         }
+    //         TyKind::Alias(_, _) => todo!(),
+    //         TyKind::Param(_) => todo!(),
+    //         TyKind::Bound(_, _) => todo!(),
+    //         TyKind::Placeholder(_) => todo!(),
+    //         TyKind::Infer(_) => todo!(),
+    //         TyKind::Error(_) => todo!(),
+    //     }
+    // }
 
-            _ => todo!(), // note: some cases are unreachable
-        }
-    }
+    // /// Get the C type of the given type, used in `extern "C"` functions signatures
+    // fn get_cty_cabi(&self, layout: TyAndLayout<'tcx>) -> CTy<'mx> {
+    //     let ty = self.tcx.erase_regions(layout.ty);
+    //     match ty.kind() {
+    //         TyKind::Bool => self.mcx.bool(),
+    //         TyKind::Char => self.mcx.int(IntTy::I32),
+    //         TyKind::Int(int) => self.mcx.int(*int),
+    //         TyKind::Uint(uint) => self.mcx.uint(*uint),
+    //         TyKind::RawPtr(ty, m) => {
+    //             // let mut ty = self.get_cty_cabi(*ty);
+    //             // if m.is_not() {
+    //             //     ty = ty.to_const();
+    //             // }
+    //             // self.mcx.ptr(ty)
+    //             todo!()
+    //         }
+    //         TyKind::Float(_) => todo!(),
+    //         TyKind::Adt(def, args) => {
+    //             if self.tcx.lang_items().c_void().is_some_and(|void| def.did() == void) {
+    //                 self.mcx.void()
+    //             } else {
+    //                 todo!()
+    //             }
+    //         }
+    //         TyKind::Foreign(_) => todo!(),
+    //         TyKind::Str => todo!(),
+    //         TyKind::Array(_, _) => todo!(),
+    //         TyKind::Pat(_, _) => todo!(),
+    //         TyKind::Slice(_) => todo!(),
+    //         TyKind::Ref(_, _, _) => todo!(),
+    //         TyKind::FnDef(_, _) => todo!(),
+    //         TyKind::FnPtr(_) => todo!(),
+    //         TyKind::Dynamic(_, _, _) => todo!(),
+    //         TyKind::Closure(_, _) => todo!(),
+    //         TyKind::CoroutineClosure(_, _) => todo!(),
+    //         TyKind::Coroutine(_, _) => todo!(),
+    //         TyKind::CoroutineWitness(_, _) => todo!(),
+    //         TyKind::Never => todo!(),
+    //         TyKind::Tuple(_) => todo!(),
+    //         TyKind::Alias(_, _) => todo!(),
+    //         TyKind::Param(_) => todo!(),
+    //         TyKind::Bound(_, _) => todo!(),
+    //         TyKind::Placeholder(_) => todo!(),
+    //         TyKind::Infer(_) => todo!(),
+    //         TyKind::Error(_) => todo!(),
+    //     }
+    // }
 }
 
 impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     fn backend_type(&self, layout: TyAndLayout<'tcx>) -> Self::Type {
-        self.get_cty_rabi(layout.ty)
+        self.get_cty(layout, Conv::Rust)
     }
 
     fn cast_backend_type(&self, ty: &rustc_target::abi::call::CastTarget) -> Self::Type {
@@ -98,7 +163,7 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
         for arg in &fn_abi.args {
             match arg.mode {
                 PassMode::Ignore => continue,
-                PassMode::Direct(_) => args.push(self.get_cty(arg.layout.ty, fn_abi.conv)),
+                PassMode::Direct(_) => args.push(self.get_cty(arg.layout, fn_abi.conv)),
                 PassMode::Pair(_, _) => {
                     args.push(self.scalar_pair_element_backend_type(arg.layout, 0, false));
                     args.push(self.scalar_pair_element_backend_type(arg.layout, 1, false));
@@ -107,7 +172,7 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
                 PassMode::Indirect { .. } => todo!(),
             }
         }
-        let ret = self.get_cty(fn_abi.ret.layout.ty, fn_abi.conv);
+        let ret = self.get_cty(fn_abi.ret.layout, fn_abi.conv);
         self.mcx.fn_ptr(ret, args.into(), fn_abi.conv)
     }
 
@@ -120,7 +185,7 @@ impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn immediate_backend_type(&self, layout: TyAndLayout<'tcx>) -> Self::Type {
-        self.get_cty_rabi(layout.ty)
+        self.get_cty(layout, Conv::Rust)
     }
 
     fn is_backend_immediate(&self, layout: TyAndLayout<'tcx>) -> bool {

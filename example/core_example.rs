@@ -21,12 +21,10 @@ pub mod libc {
     }
 }
 
-#[inline(never)]
 fn foo(x: u32, y: u32) -> i32 {
     (x + y) as i32
 }
 
-#[inline(never)]
 unsafe fn hello() {
     libc::puts(c"Hello, World!\n".as_ptr() as *const i8);
 }

@@ -9,7 +9,7 @@ impl<'tcx, 'mx> AbiBuilderMethods<'tcx> for Builder<'_, 'tcx, 'mx> {
     fn get_param(&mut self, index: usize) -> Self::Value {
         let val = self.func.params[index];
         let ty = self.func.fn_ptr().args[index];
-        (val, ty)
+        (val, ty).into()
     }
 }
 

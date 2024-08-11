@@ -30,7 +30,7 @@ impl<'mx> ModuleCtxt<'mx> {
 }
 
 impl Printer {
-    pub fn print_decl(&mut self, decl: CDecl) {
+    pub fn print_decl(&mut self, decl: CDecl, trailing_semicolon: bool) {
         match *decl {
             CDeclKind::Var { name, ty, init } => {
                 self.ibox(INDENT, |this| {
@@ -40,13 +40,17 @@ impl Printer {
                         this.softbreak();
                         this.print_expr(init, true);
                     }
-                    this.word(";");
+                    if trailing_semicolon {
+                        this.word(";");
+                    }
                 });
             }
             CDeclKind::Func { name, fn_ptr } => {
                 let CValue::Func(name) = name else { unreachable!() };
                 self.print_signature(fn_ptr.ret, name, &fn_ptr.args, None);
-                self.word(";");
+                if trailing_semicolon {
+                    self.word(";");
+                }
             }
         }
     }
