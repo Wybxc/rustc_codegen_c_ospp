@@ -16,19 +16,40 @@ pub struct CFuncKind<'mx> {
     pub name: &'mx str,
     pub ty: CTy<'mx>,
     pub params: Box<[CValue<'mx>]>,
+    is_main: bool,
     body: RefCell<Vec<&'mx CBasicBlock<'mx>>>,
     alloc: RefCell<FxIndexMap<CValue<'mx>, PendingAlloc<'mx>>>,
     local_var_counter: Cell<usize>,
 }
 
 impl<'mx> CFuncKind<'mx> {
-    pub fn new(name: &'mx str, ty: CTy<'mx>) -> Self {
+    pub fn new(name: &'mx str, ty: CTy<'mx>, is_main: bool) -> Self {
         let fn_ptr = ty.fn_ptr().expect("expected a function pointer type");
         let params = fn_ptr.args.iter().enumerate().map(|(i, _)| CValue::Local(i)).collect();
         let local_var_counter = Cell::new(fn_ptr.args.len());
         let body = RefCell::new(Vec::new());
         let alloc = RefCell::new(FxIndexMap::default());
-        Self { name, ty, params, body, alloc, local_var_counter }
+
+        // TODO: diagnosis output instead of panic
+        if is_main {
+            let fn_ptr = ty.fn_ptr().unwrap();
+            if !fn_ptr.ret.is_signed() {
+                panic!("main function must return signed integer");
+            }
+            if fn_ptr.args.len() != 0 && fn_ptr.args.len() != 2 {
+                panic!("main function must take 0 or 2 arguments, but takes {}", fn_ptr.args.len());
+            }
+            if fn_ptr.args.len() == 2 {
+                if !fn_ptr.args[0].is_signed() {
+                    panic!("argc must be signed integer");
+                }
+                if !fn_ptr.args[1].is_ptr() {
+                    panic!("argv must be pointer");
+                }
+            }
+        }
+
+        Self { name, ty, params, is_main, body, alloc, local_var_counter }
     }
 
     pub fn next_local_var(&self) -> CValue<'mx> {
@@ -105,14 +126,22 @@ impl<'mx> ModuleCtxt<'mx> {
 impl Printer {
     pub fn print_func_decl(&mut self, func: CFunc) {
         let fn_ptr = func.fn_ptr();
-        self.print_signature(fn_ptr.ret, func.0.name, &fn_ptr.args, Some(&func.0.params));
+        if func.is_main {
+            self.print_signature_main(&func.0.params)
+        } else {
+            self.print_signature(fn_ptr.ret, func.0.name, &fn_ptr.args, Some(&func.0.params));
+        }
         self.word(";");
     }
 
     pub fn print_func(&mut self, func: CFunc) {
         self.ibox(0, |this| {
             let fn_ptr = func.fn_ptr();
-            this.print_signature(fn_ptr.ret, func.0.name, &fn_ptr.args, Some(&func.0.params));
+            if func.is_main {
+                this.print_signature_main(&func.0.params)
+            } else {
+                this.print_signature(fn_ptr.ret, func.0.name, &fn_ptr.args, Some(&func.0.params));
+            }
             this.softbreak();
             this.word("{");
             if func.0.alloc.borrow().is_empty() {
@@ -158,6 +187,28 @@ impl Printer {
                         this.print_ty_decl(ty, None);
                     })
                 }
+            });
+        });
+    }
+
+    fn print_signature_main(&mut self, param_names: &[CValue]) {
+        self.ibox(0, |this| {
+            this.word("int");
+            this.softbreak();
+            this.word("main");
+
+            this.valign_delim(("(", ")"), |this| {
+                if param_names.is_empty() {
+                    return;
+                }
+                this.word("int");
+                this.softbreak();
+                this.print_value(param_names[0]);
+                this.word(",");
+                this.softbreak();
+                this.word("char**");
+                this.softbreak();
+                this.print_value(param_names[1]);
             });
         });
     }

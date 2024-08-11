@@ -35,7 +35,8 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn const_uint_big(&self, t: Self::Type, u: u128) -> Self::Value {
-        todo!()
+        let val = self.mcx.scalar(u as i128); // TODO: overflow check
+        (val, t).into()
     }
 
     fn const_bool(&self, val: bool) -> Self::Value {

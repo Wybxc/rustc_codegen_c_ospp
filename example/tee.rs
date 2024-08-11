@@ -38,6 +38,7 @@ const STDOUT_FILENO: i32 = 1;
 const STDERR_FILENO: i32 = 2;
 
 #[no_mangle]
+#[export_name = "main"] // <- this is needed to correctly print the signature of main
 pub extern "C" fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     if argc < 2 {
         eprintln(b"Usage: tee <file>\n");
@@ -51,11 +52,18 @@ pub extern "C" fn main(argc: c_int, argv: *const *const c_char) -> c_int {
         return 1;
     }
 
-    // TODO: error handling
     let mut buf = [0u8; BUF_SIZE];
-    while unsafe { libc::read(STDIN_FILENO, buf.as_mut_ptr() as *mut c_void, BUF_SIZE) } > 0 {
-        unsafe { libc::write(fd, buf.as_ptr() as *const c_void, BUF_SIZE) };
-        unsafe { libc::write(STDOUT_FILENO, buf.as_ptr() as *const c_void, BUF_SIZE) };
+    loop {
+        let n = unsafe { libc::read(STDIN_FILENO, buf.as_mut_ptr() as *mut c_void, BUF_SIZE) };
+        if n < 0 {
+            eprintln(b"Failed to read from stdin.\n");
+            return 1;
+        }
+        if n == 0 {
+            break;
+        }
+        unsafe { libc::write(fd, buf.as_ptr() as *const c_void, n as usize) };
+        unsafe { libc::write(STDOUT_FILENO, buf.as_ptr() as *const c_void, n as usize) };
     }
 
     unsafe { libc::close(fd) };

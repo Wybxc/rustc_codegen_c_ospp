@@ -35,6 +35,15 @@ impl<'mx> CTy<'mx> {
         }
     }
 
+    /// Whether the type is a pointer.
+    pub fn is_ptr(self) -> bool {
+        if let CTyBase::Ref(ty) = self.base {
+            matches!(ty.0, CTyKind::Pointer(_))
+        } else {
+            false
+        }
+    }
+
     /// Gets the function pointer type if this is a function pointer.
     pub fn fn_ptr(self) -> Option<&'mx CFnPtr<'mx>> {
         if let CTyBase::Ref(ty) = self.base {
