@@ -1,5 +1,5 @@
 #![allow(internal_features)]
-#![feature(core_intrinsics)]
+#![feature(core_intrinsics, lang_items)]
 #![no_std]
 #![no_main]
 
@@ -7,6 +7,11 @@ use core::ffi::*;
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
+    core::intrinsics::abort();
+}
+
+#[lang = "eh_personality"]
+fn eh_personality() -> ! {
     core::intrinsics::abort();
 }
 

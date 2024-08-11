@@ -1,6 +1,6 @@
 use rustc_codegen_c_ast::r#type::CTy;
 use rustc_codegen_ssa::mir::place::PlaceRef;
-use rustc_codegen_ssa::traits::LayoutTypeMethods;
+use rustc_codegen_ssa::traits::{BuilderMethods, LayoutTypeMethods};
 
 use crate::builder::Builder;
 use crate::context::Value;
@@ -21,14 +21,17 @@ impl<'a, 'tcx, 'mx> Builder<'a, 'tcx, 'mx> {
     }
 
     /// Realize an allocation.
-    pub fn realize(&self, place: PlaceRef<'tcx, Value<'mx>>) -> (CTy<'mx>, Value<'mx>) {
+    pub fn realize(&mut self, place: PlaceRef<'tcx, Value<'mx>>) -> (CTy<'mx>, Value<'mx>) {
         let ty = self.cx.backend_type(place.layout);
-        match place.val.llval {
-            Value::LValue { cval } => self.func.0.realize_alloc(cval, ty),
-            Value::RValue { cval, ty: alloc_ty } => {
-                assert_eq!(self.mcx.ptr(ty), alloc_ty)
+        let val = match place.val.llval {
+            Value::LValue { cval } => {
+                self.func.0.realize_alloc(cval, ty);
+                place.val.llval
             }
-        }
-        (ty, place.val.llval)
+            Value::RValue { cval, ty: alloc_ty } => {
+                self.pointercast(place.val.llval, self.mcx.ptr(ty))
+            }
+        };
+        (ty, val)
     }
 }
