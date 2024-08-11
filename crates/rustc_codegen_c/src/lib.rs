@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 
+extern crate itertools;
 extern crate parking_lot;
 extern crate rustc_abi;
 extern crate rustc_ast;

@@ -1,7 +1,9 @@
+use itertools::Itertools;
 use rustc_abi::{Abi, Integer, Primitive};
 use rustc_codegen_c_ast::r#type::CTy;
 use rustc_codegen_ssa::traits::LayoutTypeMethods;
 use rustc_middle::ty::layout::{HasParamEnv, TyAndLayout};
+use rustc_middle::ty::print::with_forced_trimmed_paths;
 use rustc_middle::ty::Ty;
 use rustc_target::abi::call::{Conv, FnAbi, PassMode};
 use rustc_type_ir::{IntTy, TyKind, UintTy};
@@ -14,10 +16,15 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
     }
 
     fn get_cty(&self, layout: TyAndLayout<'tcx>, abi: Conv) -> CTy<'mx> {
+        // struct, enum, union
+        if layout.ty.is_adt() {
+            return self.get_cty_adt(layout);
+        }
+
         match layout.abi {
             Abi::Uninhabited => self.mcx.void(),
-            Abi::Scalar(scalar) => self.get_cty_scalar(layout.ty, abi),
-            Abi::ScalarPair(_, _) => todo!(),
+            Abi::Scalar(_) => self.get_cty_scalar(layout.ty, abi),
+            Abi::ScalarPair(_, _) => self.get_cty_pair(layout),
             Abi::Vector { element, count } => todo!(),
             Abi::Aggregate { sized } => self.get_cty_agg(layout, abi),
         }
@@ -39,15 +46,65 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
                 Conv::Rust => mcx.int(IntTy::Isize),
                 _ => todo!(),
             },
-            TyKind::Adt(def, args) => {
-                if self.tcx.lang_items().c_void().is_some_and(|void| def.did() == void) {
-                    self.mcx.void()
-                } else {
-                    todo!()
-                }
-            }
             _ => todo!(),
         }
+    }
+
+    fn get_cty_pair(&self, layout: TyAndLayout<'tcx>) -> CTy<'mx> {
+        let fst = self.scalar_pair_element_backend_type(layout, 0, false);
+        let snd = self.scalar_pair_element_backend_type(layout, 1, false);
+        self.mcx.struct_ty(
+            None,
+            [(fst, self.mcx.alloc_str("_0")), (snd, self.mcx.alloc_str("_1"))].into(),
+        )
+    }
+
+    fn get_cty_adt(&self, layout: TyAndLayout<'tcx>) -> CTy<'mx> {
+        let mcx = self.mcx;
+        if layout.ty.is_c_void(self.tcx) {
+            return mcx.void();
+        }
+
+        if let Some(ty) = self.types.borrow().get(&layout) {
+            return *ty;
+        }
+
+        let ty = self.tcx.erase_regions(layout.ty);
+        let name = with_forced_trimmed_paths!(ty.to_string());
+        let name = name
+            .split(&[':', '<', '>', ' '][..])
+            .filter(|s| !s.is_empty() && !s.starts_with('\''))
+            .join("_");
+        let name = mcx.new_typename(&name);
+
+        let TyKind::Adt(adt, args) = ty.kind() else { unreachable!() };
+        if !adt.is_struct() {
+            let size = layout.size.bytes_usize();
+            return mcx.arr(mcx.char(), Some(size.try_into().unwrap())); // TODO
+        }
+
+        let mut unnamed = 0;
+        let fields = adt
+            .all_fields()
+            .map(|field| {
+                let ty = field.ty(self.tcx, args);
+                let ty = self.get_cty(self.layout_of(ty), Conv::Rust);
+                let name = if field.is_unnamed() {
+                    unnamed += 1;
+                    mcx.alloc_str(&format!("_{}", unnamed))
+                } else {
+                    mcx.alloc_str(field.ident(self.tcx).as_str())
+                };
+                (ty, name)
+            })
+            .collect();
+
+        let ty = mcx.struct_ty(Some(name), fields);
+        mcx.module().push_decl(mcx.typedef(name, ty));
+
+        let ty = mcx.alias(name);
+        self.types.borrow_mut().insert(layout, ty);
+        ty
     }
 
     fn get_cty_agg(&self, layout: TyAndLayout<'tcx>, abi: Conv) -> CTy<'mx> {

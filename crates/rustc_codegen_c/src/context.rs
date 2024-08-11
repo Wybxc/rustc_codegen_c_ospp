@@ -31,6 +31,8 @@ pub struct CodegenCx<'tcx, 'mx> {
     pub tcx: TyCtxt<'tcx>,
     pub mcx: ModuleCtxt<'mx>,
 
+    types: RefCell<FxHashMap<TyAndLayout<'tcx>, CTy<'mx>>>,
+
     // function declarations (in another crate or extern)
     function_declarations: RefCell<FxHashMap<Instance<'tcx>, Value<'mx>>>,
     // function instances (in this crate)
@@ -42,6 +44,7 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
         Self {
             tcx,
             mcx,
+            types: RefCell::new(FxHashMap::default()),
             function_declarations: RefCell::new(FxHashMap::default()),
             function_instances: RefCell::new(FxHashMap::default()),
         }

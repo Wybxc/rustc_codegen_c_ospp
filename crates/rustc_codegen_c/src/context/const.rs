@@ -15,6 +15,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
                 CTyKind::Pointer(_) => (CValue::Null, t).into(),
                 _ => todo!(),
             },
+            CTyBase::Alias(_) => unreachable!("typedef cannot be null"),
         }
     }
 
@@ -23,7 +24,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn const_poison(&self, t: Self::Type) -> Self::Value {
-        todo!()
+        (CValue::Null, t).into() // TODO
     }
 
     fn const_int(&self, t: Self::Type, i: i64) -> Self::Value {

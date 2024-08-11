@@ -180,7 +180,7 @@ impl Printer {
             this.valign_delim(("(", ")"), |this| {
                 if let Some(param_names) = param_names {
                     this.seperated(",", params.iter().zip(param_names), |this, (&ty, &name)| {
-                        this.print_ty_decl(ty, Some(name));
+                        this.print_ty_decl(ty, Some(name.to_string()));
                     })
                 } else {
                     this.seperated(",", params, |this, &ty| {
@@ -215,9 +215,9 @@ impl Printer {
 
     fn print_pending_alloc(&mut self, val: CValue, alloc: &PendingAlloc) {
         if let Some(ty) = alloc.ty {
-            self.print_ty_decl(ty, Some(val));
+            self.print_ty_decl(ty, Some(val.to_string()));
         } else {
-            self.print_ty_decl(alloc.fallback, Some(val));
+            self.print_ty_decl(alloc.fallback, Some(val.to_string()));
         }
         self.word(";");
     }

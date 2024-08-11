@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
@@ -5,10 +6,8 @@ use rustc_data_structures::intern::Interned;
 use rustc_target::abi::call::Conv;
 use rustc_type_ir::{IntTy, UintTy};
 
-use crate::expr::CValue;
 use crate::pretty::{Printer, INDENT};
 use crate::ModuleCtxt;
-
 /// C types with qualifiers.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CTy<'mx> {
@@ -95,6 +94,7 @@ impl std::fmt::Debug for CTy<'_> {
 pub enum CTyBase<'mx> {
     Primitive(CPTy),
     Ref(Interned<'mx, CTyKind<'mx>>),
+    Alias(&'mx str),
 }
 
 bitflags::bitflags! {
@@ -193,16 +193,16 @@ impl CPTy {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CTyKind<'mx> {
     Pointer(CTy<'mx>),
-    // Record(String),
     Array(CTy<'mx>, Option<NonZeroUsize>),
     FnPtr(CFnPtr<'mx>),
+    Struct { name: Option<&'mx str>, fields: Box<[(CTy<'mx>, &'mx str)]> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CFnPtr<'mx> {
     pub ret: CTy<'mx>,
     pub args: Box<[CTy<'mx>]>,
-    pub abi: Conv,
+    pub abi: Conv, // TODO: maybe not needed
 }
 
 impl<'mx> ModuleCtxt<'mx> {
@@ -247,6 +247,11 @@ impl<'mx> ModuleCtxt<'mx> {
         .into()
     }
 
+    /// Get the type of a type defined by the user
+    pub fn alias(&self, name: &'mx str) -> CTy<'mx> {
+        CTy { base: CTyBase::Alias(name), quals: CTyQuals::empty() }
+    }
+
     /// Get the pointer type
     pub fn ptr(&self, ty: CTy<'mx>) -> CTy<'mx> {
         self.intern_ty(CTyKind::Pointer(ty)).into()
@@ -261,12 +266,21 @@ impl<'mx> ModuleCtxt<'mx> {
     pub fn fn_ptr(&self, ret: CTy<'mx>, args: Box<[CTy<'mx>]>, abi: Conv) -> CTy<'mx> {
         self.intern_ty(CTyKind::FnPtr(CFnPtr { ret, args, abi })).into()
     }
+
+    /// Get the struct type
+    pub fn struct_ty(
+        &self,
+        name: Option<&'mx str>,
+        fields: Box<[(CTy<'mx>, &'mx str)]>,
+    ) -> CTy<'mx> {
+        self.intern_ty(CTyKind::Struct { name, fields }).into()
+    }
 }
 
 impl Printer {
-    pub fn print_ty_decl(&mut self, mut ty: CTy, val: Option<CValue>) {
+    pub fn print_ty_decl(&mut self, mut ty: CTy, val: Option<Cow<'static, str>>) {
         enum TyDeclPart<'mx> {
-            Ident(Option<CValue<'mx>>),
+            Ident(Option<Cow<'static, str>>),
             Ptr(CTyQuals),
             Array(Option<NonZeroUsize>, CTyQuals),
             FnArgs(Box<[CTy<'mx>]>),
@@ -275,27 +289,27 @@ impl Printer {
         }
 
         impl<'mx> TyDeclPart<'mx> {
-            fn print(&self, printer: &mut Printer) {
+            fn print(self, printer: &mut Printer) {
                 match self {
                     TyDeclPart::Ident(val) => {
-                        if let &Some(val) = val {
-                            printer.print_value(val);
+                        if let Some(val) = val {
+                            printer.word(val);
                         }
                     }
                     TyDeclPart::Ptr(quals) => {
                         printer.word("*");
-                        printer.print_ty_quals(*quals);
+                        printer.print_ty_quals(quals);
                     }
                     TyDeclPart::Array(n, quals) => {
                         printer.word("[");
-                        printer.print_ty_quals(*quals);
+                        printer.print_ty_quals(quals);
                         if let Some(n) = n {
                             printer.word(format!("{}", n));
                         }
                         printer.word("]");
                     }
                     TyDeclPart::FnArgs(args) => printer.ibox_delim(INDENT, ("(", ")"), |p| {
-                        p.seperated(",", args, |p, arg| p.print_ty_decl(*arg, None))
+                        p.seperated(",", args, |p, arg| p.print_ty_decl(arg, None))
                     }),
                     TyDeclPart::LParen => printer.word("("),
                     TyDeclPart::RParen => printer.word(")"),
@@ -303,34 +317,62 @@ impl Printer {
             }
         }
 
+        let has_val = val.is_some();
+
         let mut decl_parts = VecDeque::new();
         decl_parts.push_front(TyDeclPart::Ident(val));
         while let CTyBase::Ref(kind) = ty.base {
-            match kind.0 {
-                CTyKind::Pointer(_) => decl_parts.push_front(TyDeclPart::Ptr(ty.quals)),
-                CTyKind::Array(_, n) => decl_parts.push_back(TyDeclPart::Array(*n, ty.quals)),
-                CTyKind::FnPtr(CFnPtr { args, .. }) => {
+            ty = match kind.0 {
+                &CTyKind::Pointer(ty) => {
+                    decl_parts.push_front(TyDeclPart::Ptr(ty.quals));
+                    ty
+                }
+                &CTyKind::Array(ty, n) => {
+                    decl_parts.push_back(TyDeclPart::Array(n, ty.quals));
+                    ty
+                }
+                CTyKind::FnPtr(CFnPtr { ret, args, .. }) => {
                     decl_parts.push_front(TyDeclPart::LParen);
                     decl_parts.push_front(TyDeclPart::RParen);
                     decl_parts.push_back(TyDeclPart::FnArgs(args.clone()));
+                    *ret
                 }
-            }
-            ty = match kind.0 {
-                CTyKind::Pointer(ty) => *ty,
-                CTyKind::Array(ty, _) => *ty,
-                CTyKind::FnPtr(CFnPtr { ret, .. }) => *ret,
+                CTyKind::Struct { .. } => break,
             };
         }
 
-        let CTyBase::Primitive(base) = ty.base else { unreachable!() };
-        self.print_ty_quals(ty.quals);
-        self.word(base.to_str());
-        if val.is_some() {
-            self.nbsp();
-        }
-        for part in decl_parts {
-            part.print(self);
-        }
+        self.ibox(0, |this| {
+            this.print_ty_quals(ty.quals);
+
+            match ty.base {
+                CTyBase::Primitive(base) => this.word(base.to_str()),
+                CTyBase::Ref(kind) => match kind.0 {
+                    CTyKind::Struct { name, fields } => {
+                        this.word("struct");
+                        if let Some(name) = name {
+                            this.nbsp();
+                            this.word(name.to_string());
+                        }
+                        this.softbreak();
+                        this.cbox_delim(INDENT, ("{", "}"), 1, |this| {
+                            this.seperated(";", fields.iter(), |this, &(ty, name)| {
+                                this.print_ty_decl(ty, Some(name.to_string().into()));
+                            });
+                            this.word(";");
+                        })
+                    }
+                    _ => unreachable!(),
+                },
+                CTyBase::Alias(name) => this.word(name.to_string()),
+            }
+
+            if has_val {
+                this.nbsp();
+            }
+            for part in decl_parts {
+                part.print(this);
+            }
+        });
     }
 
     fn print_ty_quals(&mut self, quals: CTyQuals) {

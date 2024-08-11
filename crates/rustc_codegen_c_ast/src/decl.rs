@@ -7,7 +7,7 @@ pub type CDecl<'mx> = &'mx CDeclKind<'mx>;
 
 #[derive(Debug, Clone)]
 pub enum CDeclKind<'mx> {
-    // Typedef { name: String, ty: CType },
+    Typedef { name: &'mx str, ty: CTy<'mx> },
     // Record { name: String, fields: Vec<CDecl> },
     // Field { name: String, ty: CType },
     // Enum { name: String, values: Vec<CEnumConstant> },
@@ -18,6 +18,10 @@ pub enum CDeclKind<'mx> {
 impl<'mx> ModuleCtxt<'mx> {
     fn create_decl(self, decl: CDeclKind<'mx>) -> CDecl<'mx> {
         self.arena().alloc(decl)
+    }
+
+    pub fn typedef(self, name: &'mx str, ty: CTy<'mx>) -> CDecl<'mx> {
+        self.create_decl(CDeclKind::Typedef { name, ty })
     }
 
     pub fn var(self, name: CValue<'mx>, ty: CTy<'mx>, init: Option<CExpr<'mx>>) -> CDecl<'mx> {
@@ -32,19 +36,25 @@ impl<'mx> ModuleCtxt<'mx> {
 impl Printer {
     pub fn print_decl(&mut self, decl: CDecl, trailing_semicolon: bool) {
         match *decl {
-            CDeclKind::Var { name, ty, init } => {
-                self.ibox(INDENT, |this| {
-                    this.print_ty_decl(ty, Some(name));
-                    if let Some(init) = init {
-                        this.word(" =");
-                        this.softbreak();
-                        this.print_expr(init, true);
-                    }
-                    if trailing_semicolon {
-                        this.word(";");
-                    }
-                });
-            }
+            CDeclKind::Typedef { name, ty } => self.ibox(INDENT, |this| {
+                this.word("typedef");
+                this.softbreak();
+                this.print_ty_decl(ty, Some(name.to_string().into()));
+                if trailing_semicolon {
+                    this.word(";");
+                }
+            }),
+            CDeclKind::Var { name, ty, init } => self.ibox(INDENT, |this| {
+                this.print_ty_decl(ty, Some(name.to_string()));
+                if let Some(init) = init {
+                    this.word(" =");
+                    this.softbreak();
+                    this.print_expr(init, true);
+                }
+                if trailing_semicolon {
+                    this.word(";");
+                }
+            }),
             CDeclKind::Func { name, fn_ptr } => {
                 let CValue::Func(name) = name else { unreachable!() };
                 self.print_signature(fn_ptr.ret, name, &fn_ptr.args, None);
