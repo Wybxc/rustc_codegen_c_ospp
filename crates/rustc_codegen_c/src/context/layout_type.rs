@@ -14,13 +14,12 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
     }
 
     fn get_cty(&self, layout: TyAndLayout<'tcx>, abi: Conv) -> CTy<'mx> {
-        dbg!(layout);
         match layout.abi {
             Abi::Uninhabited => self.mcx.void(),
             Abi::Scalar(scalar) => self.get_cty_scalar(layout.ty, abi),
             Abi::ScalarPair(_, _) => todo!(),
             Abi::Vector { element, count } => todo!(),
-            Abi::Aggregate { sized } => self.mcx.void(), // TODO: struct
+            Abi::Aggregate { sized } => self.get_cty_agg(layout, abi),
         }
     }
 
@@ -51,100 +50,17 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
         }
     }
 
-    // fn get_cty_rabi(&self, layout: TyAndLayout<'tcx>) -> CTy<'mx> {
-    //     let ty = self.tcx.erase_regions(layout.ty);
-    //     match ty.kind() {
-    //         TyKind::Bool => self.mcx.bool(),
-    //         TyKind::Char => self.mcx.int(IntTy::I32),
-    //         TyKind::Int(int) => self.mcx.int(*int),
-    //         TyKind::Uint(uint) => self.mcx.uint(*uint),
-    //         TyKind::Float(_) => todo!(),
-    //         TyKind::Adt(_, _) => self.mcx.void(), // TODO: struct
-    //         TyKind::Foreign(_) => todo!(),
-    //         TyKind::Str => self.mcx.char(),
-    //         TyKind::Array(ty, n) => todo!(),
-    //         TyKind::Pat(_, _) => todo!(),
-    //         TyKind::Slice(_) => todo!(),
-    //         TyKind::RawPtr(_, _) => self.mcx.int(IntTy::Isize),
-    //         TyKind::Ref(_, ty, m) => {
-    //             // let mut ty = self.mcx.ptr(self.get_cty_rabi(*ty));
-    //             // if m.is_not() {
-    //             //     ty = ty.to_const();
-    //             // }
-    //             // ty
-    //             todo!()
-    //         }
-    //         TyKind::FnDef(_, _) => todo!(),
-    //         TyKind::FnPtr(_) => todo!(),
-    //         TyKind::Dynamic(_, _, _) => todo!(),
-    //         TyKind::Closure(_, _) => todo!(),
-    //         TyKind::CoroutineClosure(_, _) => todo!(),
-    //         TyKind::Coroutine(_, _) => todo!(),
-    //         TyKind::CoroutineWitness(_, _) => todo!(),
-    //         TyKind::Never => self.mcx.void(),
-    //         TyKind::Tuple(t) => {
-    //             if t.is_empty() {
-    //                 self.mcx.void()
-    //             } else {
-    //                 todo!()
-    //             }
-    //         }
-    //         TyKind::Alias(_, _) => todo!(),
-    //         TyKind::Param(_) => todo!(),
-    //         TyKind::Bound(_, _) => todo!(),
-    //         TyKind::Placeholder(_) => todo!(),
-    //         TyKind::Infer(_) => todo!(),
-    //         TyKind::Error(_) => todo!(),
-    //     }
-    // }
-
-    // /// Get the C type of the given type, used in `extern "C"` functions signatures
-    // fn get_cty_cabi(&self, layout: TyAndLayout<'tcx>) -> CTy<'mx> {
-    //     let ty = self.tcx.erase_regions(layout.ty);
-    //     match ty.kind() {
-    //         TyKind::Bool => self.mcx.bool(),
-    //         TyKind::Char => self.mcx.int(IntTy::I32),
-    //         TyKind::Int(int) => self.mcx.int(*int),
-    //         TyKind::Uint(uint) => self.mcx.uint(*uint),
-    //         TyKind::RawPtr(ty, m) => {
-    //             // let mut ty = self.get_cty_cabi(*ty);
-    //             // if m.is_not() {
-    //             //     ty = ty.to_const();
-    //             // }
-    //             // self.mcx.ptr(ty)
-    //             todo!()
-    //         }
-    //         TyKind::Float(_) => todo!(),
-    //         TyKind::Adt(def, args) => {
-    //             if self.tcx.lang_items().c_void().is_some_and(|void| def.did() == void) {
-    //                 self.mcx.void()
-    //             } else {
-    //                 todo!()
-    //             }
-    //         }
-    //         TyKind::Foreign(_) => todo!(),
-    //         TyKind::Str => todo!(),
-    //         TyKind::Array(_, _) => todo!(),
-    //         TyKind::Pat(_, _) => todo!(),
-    //         TyKind::Slice(_) => todo!(),
-    //         TyKind::Ref(_, _, _) => todo!(),
-    //         TyKind::FnDef(_, _) => todo!(),
-    //         TyKind::FnPtr(_) => todo!(),
-    //         TyKind::Dynamic(_, _, _) => todo!(),
-    //         TyKind::Closure(_, _) => todo!(),
-    //         TyKind::CoroutineClosure(_, _) => todo!(),
-    //         TyKind::Coroutine(_, _) => todo!(),
-    //         TyKind::CoroutineWitness(_, _) => todo!(),
-    //         TyKind::Never => todo!(),
-    //         TyKind::Tuple(_) => todo!(),
-    //         TyKind::Alias(_, _) => todo!(),
-    //         TyKind::Param(_) => todo!(),
-    //         TyKind::Bound(_, _) => todo!(),
-    //         TyKind::Placeholder(_) => todo!(),
-    //         TyKind::Infer(_) => todo!(),
-    //         TyKind::Error(_) => todo!(),
-    //     }
-    // }
+    fn get_cty_agg(&self, layout: TyAndLayout<'tcx>, abi: Conv) -> CTy<'mx> {
+        let mcx = self.mcx;
+        let ty = self.tcx.erase_regions(layout.ty);
+        match ty.kind() {
+            TyKind::Array(ty, _) => mcx.arr(
+                self.get_cty(self.layout_of(*ty), abi),
+                Some(layout.fields.count().try_into().unwrap()), // TODO: [_; 0]
+            ),
+            _ => mcx.void(), // TODO
+        }
+    }
 }
 
 impl<'tcx, 'mx> LayoutTypeMethods<'tcx> for CodegenCx<'tcx, 'mx> {

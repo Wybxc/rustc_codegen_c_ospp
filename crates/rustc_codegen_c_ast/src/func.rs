@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 
+use rustc_data_structures::fx::FxIndexMap;
 use rustc_data_structures::intern::Interned;
 
 use crate::expr::CValue;
@@ -15,7 +16,8 @@ pub struct CFuncKind<'mx> {
     pub name: &'mx str,
     pub ty: CTy<'mx>,
     pub params: Box<[CValue<'mx>]>,
-    pub body: RefCell<Vec<&'mx CBasicBlock<'mx>>>,
+    body: RefCell<Vec<&'mx CBasicBlock<'mx>>>,
+    alloc: RefCell<FxIndexMap<CValue<'mx>, PendingAlloc<'mx>>>,
     local_var_counter: Cell<usize>,
 }
 
@@ -24,13 +26,36 @@ impl<'mx> CFuncKind<'mx> {
         let fn_ptr = ty.fn_ptr().expect("expected a function pointer type");
         let params = fn_ptr.args.iter().enumerate().map(|(i, _)| CValue::Local(i)).collect();
         let local_var_counter = Cell::new(fn_ptr.args.len());
-        Self { name, ty, params, body: RefCell::new(Vec::new()), local_var_counter }
+        let body = RefCell::new(Vec::new());
+        let alloc = RefCell::new(FxIndexMap::default());
+        Self { name, ty, params, body, alloc, local_var_counter }
     }
 
-    pub fn next_local_var(&self) -> CValue {
+    pub fn next_local_var(&self) -> CValue<'mx> {
         let val = CValue::Local(self.local_var_counter.get());
         self.local_var_counter.set(self.local_var_counter.get() + 1);
         val
+    }
+
+    pub fn new_pending_alloc(&self, fallback: CTy<'mx>) -> CValue<'mx> {
+        let val = self.next_local_var();
+        self.alloc.borrow_mut().insert(val, PendingAlloc { ty: None, fallback });
+        val
+    }
+
+    pub fn realize_alloc(&self, val: CValue<'mx>, ty: CTy<'mx>) {
+        let mut alloc = self.alloc.borrow_mut();
+        match alloc.get_mut(&val) {
+            Some(PendingAlloc { ty: Some(alloc_ty), .. }) => {
+                assert_eq!(ty, *alloc_ty, "alloc mismatch: {:?} vs {:?}", ty, alloc_ty)
+            }
+            Some(PendingAlloc { ty: alloc_ty @ None, .. }) => {
+                alloc_ty.replace(ty);
+            }
+            None => {
+                panic!("alloc not found: {:?}", val)
+            }
+        }
     }
 
     pub fn new_bb(&self, label: &str, mcx: &ModuleCtxt<'mx>) -> &'mx CBasicBlock<'mx> {
@@ -43,6 +68,12 @@ impl<'mx> CFuncKind<'mx> {
     pub fn fn_ptr(&self) -> &'mx CFnPtr<'mx> {
         self.ty.fn_ptr().unwrap()
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingAlloc<'mx> {
+    pub ty: Option<CTy<'mx>>,
+    pub fallback: CTy<'mx>, // fallback type char[N] if ty is None
 }
 
 #[derive(Debug, Clone)]
@@ -84,8 +115,18 @@ impl Printer {
             this.print_signature(fn_ptr.ret, func.0.name, &fn_ptr.args, Some(&func.0.params));
             this.softbreak();
             this.word("{");
-            this.break_offset(0, 0);
+            if func.0.alloc.borrow().is_empty() {
+                this.break_offset(0, 0);
+            } else {
+                this.break_offset(0, INDENT);
+            }
             this.cbox(INDENT, |this| {
+                this.seperated("", func.0.alloc.borrow().iter(), |this, (var, alloc)| {
+                    this.print_pending_alloc(*var, alloc);
+                });
+                if !func.0.alloc.borrow().is_empty() {
+                    this.break_offset(0, -INDENT);
+                }
                 for &bb in func.0.body.borrow().iter() {
                     this.print_bb(bb);
                     this.break_offset(0, -INDENT);
@@ -119,6 +160,15 @@ impl Printer {
                 }
             });
         });
+    }
+
+    fn print_pending_alloc(&mut self, val: CValue, alloc: &PendingAlloc) {
+        if let Some(ty) = alloc.ty {
+            self.print_ty_decl(ty, Some(val));
+        } else {
+            self.print_ty_decl(alloc.fallback, Some(val));
+        }
+        self.word(";");
     }
 
     fn print_bb(&mut self, bb: &CBasicBlock) {

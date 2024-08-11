@@ -49,14 +49,30 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Value<'mx> {
-    pub cval: CValue<'mx>,
-    pub ty: CTy<'mx>,
+pub enum Value<'mx> {
+    RValue { cval: CValue<'mx>, ty: CTy<'mx> },
+    LValue { cval: CValue<'mx> },
 }
 
 impl<'mx> From<(CValue<'mx>, CTy<'mx>)> for Value<'mx> {
     fn from((cval, ty): (CValue<'mx>, CTy<'mx>)) -> Self {
-        Self { cval, ty }
+        Self::RValue { cval, ty }
+    }
+}
+
+impl<'mx> Value<'mx> {
+    pub fn cval(self) -> CValue<'mx> {
+        match self {
+            Self::RValue { cval, .. } => cval,
+            Self::LValue { cval } => cval,
+        }
+    }
+
+    pub fn ty(self) -> CTy<'mx> {
+        match self {
+            Self::RValue { ty, .. } => ty,
+            Self::LValue { .. } => panic!("loading lvalue as rvalue"),
+        }
     }
 }
 
