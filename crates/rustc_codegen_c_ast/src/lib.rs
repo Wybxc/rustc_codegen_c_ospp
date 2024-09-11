@@ -1,9 +1,7 @@
 #![feature(rustc_private)]
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::fmt::{self, Display};
-
-use rustc_hash::FxHashSet;
 
 use crate::r#type::{CTyBase, CTyKind};
 
@@ -47,22 +45,7 @@ impl<'mx> ModuleCtxt<'mx> {
 
     /// Generate a new unique name for a typedef.
     pub fn new_typename(&self, name: &str) -> &'mx str {
-        let mut typenames = self.0.typenames.borrow_mut();
-        if !typenames.contains(name) {
-            let name = self.arena().alloc_str(name);
-            typenames.insert(name);
-            return name;
-        }
-
-        let mut alt = 1;
-        loop {
-            let name = self.arena().alloc_str(&format!("{}_{}", name, alt));
-            if !typenames.contains(name) {
-                typenames.insert(name);
-                return name;
-            }
-            alt += 1;
-        }
+        self.0.typenames.intern(name, self)
     }
 }
 
@@ -79,7 +62,7 @@ pub struct ModuleArena<'mx> {
     pub module: module::Module<'mx>,
     interner: intern::Interner<'mx>,
     global_var_counter: Cell<usize>,
-    typenames: RefCell<FxHashSet<&'mx str>>,
+    typenames: intern::NameManager<'mx>,
 }
 
 impl<'mx> ModuleArena<'mx> {
@@ -89,7 +72,7 @@ impl<'mx> ModuleArena<'mx> {
             module: module::Module::new(),
             interner: intern::Interner::default(),
             global_var_counter: Cell::new(0),
-            typenames: RefCell::new(FxHashSet::default()),
+            typenames: intern::NameManager::new(),
         }
     }
 }

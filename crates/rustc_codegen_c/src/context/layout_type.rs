@@ -102,7 +102,7 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
         let ty = mcx.struct_ty(Some(name), fields);
         mcx.module().push_decl(mcx.typedef(name, ty));
 
-        let ty = mcx.alias(name);
+        let ty = mcx.alias(name, ty);
         self.types.borrow_mut().insert(layout, ty);
         ty
     }

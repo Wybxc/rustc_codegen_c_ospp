@@ -20,14 +20,24 @@ impl<'mx> CTy<'mx> {
         Self { base: CTyBase::Primitive(ty), quals: CTyQuals::empty() }
     }
 
+    /// Resolve the alias type.
+    pub fn resolve(self) -> CTy<'mx> {
+        if let CTyBase::Ref(ty) = self.base {
+            if let CTyKind::Alias { base, .. } = ty.0 {
+                return base.resolve();
+            }
+        }
+        self
+    }
+
     /// Whether the type is void.
     pub fn is_void(self) -> bool {
-        matches!(self.base, CTyBase::Primitive(CPTy::Void))
+        matches!(self.resolve().base, CTyBase::Primitive(CPTy::Void))
     }
 
     /// Whether the type is a signed integer.
     pub fn is_signed(self) -> bool {
-        if let CTyBase::Primitive(ty) = self.base {
+        if let CTyBase::Primitive(ty) = self.resolve().base {
             ty.is_signed()
         } else {
             false
@@ -36,7 +46,7 @@ impl<'mx> CTy<'mx> {
 
     /// Whether the type is a pointer.
     pub fn is_ptr(self) -> bool {
-        if let CTyBase::Ref(ty) = self.base {
+        if let CTyBase::Ref(ty) = self.resolve().base {
             matches!(ty.0, CTyKind::Pointer(_))
         } else {
             false
@@ -45,9 +55,28 @@ impl<'mx> CTy<'mx> {
 
     /// Gets the function pointer type if this is a function pointer.
     pub fn fn_ptr(self) -> Option<&'mx CFnPtr<'mx>> {
-        if let CTyBase::Ref(ty) = self.base {
+        if let CTyBase::Ref(ty) = self.resolve().base {
             if let CTyKind::FnPtr(fn_ptr) = ty.0 {
                 return Some(fn_ptr);
+            }
+        }
+        None
+    }
+
+    /// Whether the type is a struct.
+    pub fn is_struct(self) -> bool {
+        if let CTyBase::Ref(ty) = self.resolve().base {
+            matches!(ty.0, CTyKind::Struct { .. })
+        } else {
+            false
+        }
+    }
+
+    /// Gets the fields if this is a struct.
+    pub fn fields(self) -> Option<&'mx [(CTy<'mx>, &'mx str)]> {
+        if let CTyBase::Ref(ty) = self.resolve().base {
+            if let CTyKind::Struct { fields, .. } = ty.0 {
+                return Some(fields.as_ref());
             }
         }
         None
@@ -94,7 +123,6 @@ impl std::fmt::Debug for CTy<'_> {
 pub enum CTyBase<'mx> {
     Primitive(CPTy),
     Ref(Interned<'mx, CTyKind<'mx>>),
-    Alias(&'mx str),
 }
 
 bitflags::bitflags! {
@@ -195,6 +223,7 @@ pub enum CTyKind<'mx> {
     Pointer(CTy<'mx>),
     Array(CTy<'mx>, Option<NonZeroUsize>),
     FnPtr(CFnPtr<'mx>),
+    Alias { name: &'mx str, base: CTy<'mx> },
     Struct { name: Option<&'mx str>, fields: Box<[(CTy<'mx>, &'mx str)]> },
 }
 
@@ -248,8 +277,8 @@ impl<'mx> ModuleCtxt<'mx> {
     }
 
     /// Get the type of a type defined by the user
-    pub fn alias(&self, name: &'mx str) -> CTy<'mx> {
-        CTy { base: CTyBase::Alias(name), quals: CTyQuals::empty() }
+    pub fn alias(&self, name: &'mx str, base: CTy<'mx>) -> CTy<'mx> {
+        self.intern_ty(CTyKind::Alias { name, base }).into()
     }
 
     /// Get the pointer type
@@ -332,11 +361,13 @@ impl Printer {
                     ty
                 }
                 CTyKind::FnPtr(CFnPtr { ret, args, .. }) => {
+                    decl_parts.push_front(TyDeclPart::Ptr(CTyQuals::empty()));
                     decl_parts.push_front(TyDeclPart::LParen);
-                    decl_parts.push_front(TyDeclPart::RParen);
+                    decl_parts.push_back(TyDeclPart::RParen);
                     decl_parts.push_back(TyDeclPart::FnArgs(args.clone()));
                     *ret
                 }
+                CTyKind::Alias { .. } => break,
                 CTyKind::Struct { .. } => break,
             };
         }
@@ -361,9 +392,9 @@ impl Printer {
                             this.word(";");
                         })
                     }
+                    CTyKind::Alias { name, .. } => this.word(name.to_string()),
                     _ => unreachable!(),
                 },
-                CTyBase::Alias(name) => this.word(name.to_string()),
             }
 
             if has_val {

@@ -1,5 +1,5 @@
 use rustc_codegen_ssa::mir::place::PlaceRef;
-use rustc_codegen_ssa::traits::{AbiBuilderMethods, ArgAbiMethods};
+use rustc_codegen_ssa::traits::{AbiBuilderMethods, ArgAbiMethods, BuilderMethods};
 use rustc_middle::ty::Ty;
 use rustc_target::abi::call::ArgAbi;
 
@@ -20,7 +20,10 @@ impl<'tcx, 'mx> ArgAbiMethods<'tcx> for Builder<'_, 'tcx, 'mx> {
         idx: &mut usize,
         dst: PlaceRef<'tcx, Self::Value>,
     ) {
-        todo!()
+        let val = self.get_param(*idx);
+        let (ty, lval) = self.realize(dst);
+        dbg!(self.func);
+        self.store(val, lval, dst.layout.align.abi);
     }
 
     fn store_arg(

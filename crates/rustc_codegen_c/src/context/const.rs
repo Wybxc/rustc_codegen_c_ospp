@@ -1,6 +1,6 @@
 use rustc_abi::HasDataLayout;
 use rustc_codegen_c_ast::expr::CValue;
-use rustc_codegen_c_ast::r#type::{CTyBase, CTyKind};
+use rustc_codegen_c_ast::r#type::{CTy, CTyBase, CTyKind};
 use rustc_codegen_ssa::traits::ConstMethods;
 use rustc_const_eval::interpret::{ConstAllocation, GlobalAlloc, Scalar};
 use rustc_type_ir::UintTy;
@@ -9,13 +9,13 @@ use crate::context::CodegenCx;
 
 impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     fn const_null(&self, t: Self::Type) -> Self::Value {
-        match t.base {
+        match t.resolve().base {
             CTyBase::Primitive(_) => todo!(),
             CTyBase::Ref(tkd) => match tkd.0 {
                 CTyKind::Pointer(_) => (CValue::Null, t).into(),
+                CTyKind::Struct { .. } => (CValue::Default(t), t).into(),
                 _ => todo!(),
             },
-            CTyBase::Alias(_) => unreachable!("typedef cannot be null"),
         }
     }
 
@@ -24,7 +24,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
     }
 
     fn const_poison(&self, t: Self::Type) -> Self::Value {
-        (CValue::Null, t).into() // TODO
+        self.const_undef(t)
     }
 
     fn const_int(&self, t: Self::Type, i: i64) -> Self::Value {
@@ -112,7 +112,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
                 let (prov, offset) = ptr.into_parts(); // we know the `offset` is relative
                 assert!(offset.bytes() == 0, "TODO");
                 let alloc_id = prov.alloc_id();
-                let base_addr = match self.tcx.global_alloc(alloc_id) {
+                let (base_addr, ty) = match self.tcx.global_alloc(alloc_id) {
                     GlobalAlloc::Function(_) => todo!(),
                     GlobalAlloc::VTable(_, _) => todo!(),
                     GlobalAlloc::Static(_) => todo!(),
@@ -133,7 +133,7 @@ impl<'tcx, 'mx> ConstMethods<'tcx> for CodegenCx<'tcx, 'mx> {
 }
 
 impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
-    pub fn const_alloc(&self, alloc: ConstAllocation<'tcx>) -> CValue<'mx> {
+    pub fn const_alloc(&self, alloc: ConstAllocation<'tcx>) -> (CValue<'mx>, CTy<'mx>) {
         let alloc = alloc.inner();
         let mut chunks = Vec::with_capacity(alloc.provenance().ptrs().len() + 1);
         let dl = self.data_layout();
@@ -170,6 +170,6 @@ impl<'tcx, 'mx> CodegenCx<'tcx, 'mx> {
                 chunks[0].iter().map(|&b| mcx.value(mcx.scalar(b as i128))).collect::<Box<[_]>>(),
             )),
         ));
-        var
+        (var, ty)
     }
 }

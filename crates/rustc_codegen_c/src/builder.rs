@@ -524,18 +524,8 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     fn store(
         &mut self,
         val: Self::Value,
-        ptr: Self::Value,
-        align: rustc_abi::Align,
-    ) -> Self::Value {
-        todo!()
-    }
-
-    fn store_with_flags(
-        &mut self,
-        val: Self::Value,
         ptr_or_lval: Self::Value,
         align: rustc_abi::Align,
-        flags: MemFlags, // TODO: align & flags
     ) -> Self::Value {
         let mcx = self.cx.mcx;
         let lval = match ptr_or_lval {
@@ -545,6 +535,16 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
 
         self.bb.push_stmt(mcx.expr(mcx.assign(lval, mcx.value(val.cval()))));
         (mcx.scalar(0), mcx.int(IntTy::I32)).into()
+    }
+
+    fn store_with_flags(
+        &mut self,
+        val: Self::Value,
+        ptr_or_lval: Self::Value,
+        align: rustc_abi::Align,
+        flags: MemFlags, // TODO: align & flags
+    ) -> Self::Value {
+        self.store(val, ptr_or_lval, align)
     }
 
     fn atomic_store(
@@ -768,12 +768,25 @@ impl<'a, 'tcx, 'mx> BuilderMethods<'a, 'tcx> for Builder<'a, 'tcx, 'mx> {
     }
 
     fn extract_value(&mut self, agg_val: Self::Value, idx: u64) -> Self::Value {
-        // TODO: fat pointer?
-        agg_val
+        if let Some(fields) = agg_val.ty().fields() {
+            let (ty, name) = fields[idx as usize];
+            let mcx = self.mcx;
+            let result = self.func.next_local_var();
+            self.bb.push_stmt(mcx.decl(mcx.var(
+                result,
+                ty,
+                Some(mcx.member(mcx.value(agg_val.cval()), name)),
+            )));
+            (result, ty).into()
+        } else {
+            dbg!(agg_val, idx);
+            todo!()
+        }
     }
 
     fn insert_value(&mut self, agg_val: Self::Value, elt: Self::Value, idx: u64) -> Self::Value {
-        todo!()
+        // dbg!(agg_val, elt, idx);
+        agg_val
     }
 
     fn set_personality_fn(&mut self, personality: Self::Value) {

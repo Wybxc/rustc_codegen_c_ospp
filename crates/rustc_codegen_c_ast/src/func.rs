@@ -4,6 +4,7 @@ use rustc_data_structures::fx::FxIndexMap;
 use rustc_data_structures::intern::Interned;
 
 use crate::expr::CValue;
+use crate::intern::NameManager;
 use crate::pretty::{Printer, INDENT};
 use crate::r#type::{CFnPtr, CTy};
 use crate::stmt::CStmt;
@@ -20,6 +21,7 @@ pub struct CFuncKind<'mx> {
     body: RefCell<Vec<&'mx CBasicBlock<'mx>>>,
     alloc: RefCell<FxIndexMap<CValue<'mx>, PendingAlloc<'mx>>>,
     local_var_counter: Cell<usize>,
+    bb_names: NameManager<'mx>,
 }
 
 impl<'mx> CFuncKind<'mx> {
@@ -27,6 +29,7 @@ impl<'mx> CFuncKind<'mx> {
         let fn_ptr = ty.fn_ptr().expect("expected a function pointer type");
         let params = fn_ptr.args.iter().enumerate().map(|(i, _)| CValue::Local(i)).collect();
         let local_var_counter = Cell::new(fn_ptr.args.len());
+        let bb_names = NameManager::new();
         let body = RefCell::new(Vec::new());
         let alloc = RefCell::new(FxIndexMap::default());
 
@@ -49,7 +52,7 @@ impl<'mx> CFuncKind<'mx> {
             }
         }
 
-        Self { name, ty, params, is_main, body, alloc, local_var_counter }
+        Self { name, ty, params, is_main, body, alloc, local_var_counter, bb_names }
     }
 
     pub fn next_local_var(&self) -> CValue<'mx> {
@@ -79,8 +82,13 @@ impl<'mx> CFuncKind<'mx> {
         }
     }
 
+    /// Generate a new unique name for a basic block.
+    fn new_bb_name(&self, name: &str, mcx: &ModuleCtxt<'mx>) -> &'mx str {
+        self.bb_names.intern(name, mcx)
+    }
+
     pub fn new_bb(&self, label: &str, mcx: &ModuleCtxt<'mx>) -> &'mx CBasicBlock<'mx> {
-        let label = mcx.alloc_str(label);
+        let label = self.new_bb_name(label, mcx);
         let bb = mcx.create_bb(CBasicBlock::new(label));
         self.body.borrow_mut().push(bb);
         bb
@@ -180,7 +188,7 @@ impl Printer {
             this.valign_delim(("(", ")"), |this| {
                 if let Some(param_names) = param_names {
                     this.seperated(",", params.iter().zip(param_names), |this, (&ty, &name)| {
-                        this.print_ty_decl(ty, Some(name.to_string()));
+                        this.print_ty_decl(ty, Some(name.name()));
                     })
                 } else {
                     this.seperated(",", params, |this, &ty| {
@@ -215,9 +223,9 @@ impl Printer {
 
     fn print_pending_alloc(&mut self, val: CValue, alloc: &PendingAlloc) {
         if let Some(ty) = alloc.ty {
-            self.print_ty_decl(ty, Some(val.to_string()));
+            self.print_ty_decl(ty, Some(val.name()));
         } else {
-            self.print_ty_decl(alloc.fallback, Some(val.to_string()));
+            self.print_ty_decl(alloc.fallback, Some(val.name()));
         }
         self.word(";");
     }

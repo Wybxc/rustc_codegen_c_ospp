@@ -74,7 +74,7 @@ impl<'mx> Value<'mx> {
     pub fn ty(self) -> CTy<'mx> {
         match self {
             Self::RValue { ty, .. } => ty,
-            Self::LValue { .. } => panic!("loading lvalue as rvalue"),
+            Self::LValue { .. } => panic!("loading lvalue as rvalue: {:?}", self),
         }
     }
 }

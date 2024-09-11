@@ -45,7 +45,7 @@ impl Printer {
                 }
             }),
             CDeclKind::Var { name, ty, init } => self.ibox(INDENT, |this| {
-                this.print_ty_decl(ty, Some(name.to_string()));
+                this.print_ty_decl(ty, Some(name.name()));
                 if let Some(init) = init {
                     this.word(" =");
                     this.softbreak();

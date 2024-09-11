@@ -8,6 +8,7 @@ use crate::ModuleCtxt;
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum CValue<'mx> {
     Null,
+    Default(CTy<'mx>),
     Scalar(i128),
     Local(usize),
     Global(usize),
@@ -19,20 +20,28 @@ impl<'mx> CValue<'mx> {
         matches!(self, CValue::Func(_))
     }
 
-    pub fn to_string(self) -> Cow<'static, str> {
+    /// Get the name of the value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the value is a default initializer.
+    pub fn name(self) -> Cow<'static, str> {
         match self {
-            CValue::Null => "NULL".into(),
-            CValue::Scalar(x) => x.to_string().into(),
-            CValue::Local(x) => format!("_{}", x).into(),
-            CValue::Global(x) => format!("_g{}", x).into(), // TODO: module-specific prefix
-            CValue::Func(x) => x.to_string().into(),
+            CValue::Func(name) => Cow::Owned(name.to_string()),
+            CValue::Scalar(i) => Cow::Owned(i.to_string()),
+            CValue::Local(i) => Cow::Owned(format!("_{}", i)),
+            CValue::Global(i) => Cow::Owned(format!("_g{}", i)),
+            CValue::Null => Cow::Borrowed("NULL"),
+            CValue::Default(_) => panic!("value is a default initializer"),
         }
     }
 }
 
 impl std::fmt::Debug for CValue<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        let mut pp = Printer::new();
+        pp.print_value(*self);
+        write!(f, "{}", pp.finish())
     }
 }
 
@@ -113,7 +122,13 @@ impl<'mx> ModuleCtxt<'mx> {
 
 impl Printer {
     pub fn print_value(&mut self, value: CValue) {
-        self.word(value.to_string());
+        match value {
+            CValue::Default(ty) => {
+                self.ibox_delim(0, ("(", ")"), |this| this.print_ty_decl(ty, None));
+                self.word("{}");
+            }
+            _ => self.word(value.name()),
+        }
     }
 
     pub fn print_expr(&mut self, expr: CExpr, outer: bool) {
